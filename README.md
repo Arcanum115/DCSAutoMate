@@ -96,6 +96,28 @@ do not affect DCS mission readiness. Runtime is roughly five minutes.
   `FADEC_GUARD_*`, `PLT_MASTER_CAUTION`, `PLT_CNI_INDX`, `CPLT_CNI_BRT_ROCKER`,
   and the overhead-LCD string outputs (`APU_NG`, `BLEED_AIR_PRESSURE`, etc.)
 
+## Quick start
+
+1. **Download and extract DCSAutoMate** — grab the latest release zip from this
+   fork (`DCSAutoMate_v1.0.0-c130j.1.zip` or newer), extract it anywhere you
+   like (e.g. `C:\Tools\DCSAutoMate\`).
+2. **Grab the custom DCS-BIOS** from
+   [`Arcanum115/dcs-bios`](https://github.com/Arcanum115/dcs-bios). Download
+   the matching release zip (e.g. `DCS-BIOS_v0.11.1-c130j.1.zip`).
+3. **Put DCS-BIOS into the proper location.** Follow the install instructions
+   in the
+   [Arcanum115/dcs-bios README](https://github.com/Arcanum115/dcs-bios#installation)
+   — copy the extracted `DCS-BIOS` folder into your
+   `C:\Users\<username>\Saved Games\DCS\Scripts\` folder.
+4. **Make the `Export.lua` edit** described in the same dcs-bios README.
+   Short version: add the line
+   `dofile(lfs.writedir() .. [[Scripts\DCS-BIOS\BIOS.lua]])` to your
+   `Saved Games\DCS\Scripts\Export.lua` file (create it if it doesn't exist).
+5. **Launch DCSAutoMate.exe**, select the **Script File** (e.g. `C-130J`),
+   pick a **Script** (`Cold Start`, `Shutdown`, or `Test: Engine Switch Click`),
+   set the **Options** (Day/Night, External Power), then alt-tab into DCS,
+   press **START** in DCSAutoMate, and sit back and watch it go.
+
 ---
 
 This script uses DCS-BIOS (specifically, **this fork's matching build at [`Arcanum115/dcs-bios`](https://github.com/Arcanum115/dcs-bios)**) to send commands to DCS.  It also uses [pydirectinput](https://github.com/learncodebygaming/pydirectinput) to send keyboard commands.

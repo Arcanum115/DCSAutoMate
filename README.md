@@ -1,7 +1,106 @@
 # DCSAutoMate
 Python scripting engine for DCS World using DCS BIOS.
 
-This script uses DCS BIOS (specifically, [the DCS BIOS fork for DCS Flightpanels](https://github.com/DCSFlightpanels/dcs-bios)) to send commands to DCS.  It also uses [pydirectinput](https://github.com/learncodebygaming/pydirectinput) to send keyboard commands.
+> **Fork notice — Arcanum115**
+>
+> This fork adds full **Cold Start**, **Shutdown**, and an **Engine Switch Click**
+> debug helper for the Anubis Productions **C-130J-30** module. The C-130J
+> integration is working but still **WIP** — cold start completes through
+> BEFORE TAKEOFF and the aircraft is takeoff-ready; additional sequences and
+> refinements are ongoing.
+>
+> Companion DCS-BIOS additions live at
+> [`Arcanum115/dcs-bios`](https://github.com/Arcanum115/dcs-bios) — both repos
+> are needed for the C-130J scripts to drive the cockpit correctly.
+>
+> **AI-assisted disclaimer:** the C-130J Python script and parts of this
+> README were developed with assistance from Anthropic's Claude AI. All code
+> was hand-verified and tested in DCS by Arcanum115 before being committed.
+
+# Features
+
+DCSAutoMate exposes a single, focused control surface (see screenshots in
+the fork's GitHub release for visual reference):
+
+* **Module / Script selector** — pick the aircraft script file (e.g. `C-130J`),
+  then pick a specific script inside it (`Cold Start`, `Shutdown`, etc.).
+* **Per-script Options** — each script can declare its own variables (radio
+  buttons / dropdowns) that are presented automatically. The C-130J Cold Start
+  exposes `Time` (Day / Night) and `External Power` (No / Yes), for example.
+* **Start / Stop controls** — large buttons to run or abort the current script.
+* **Status indicator** — a `READY` / `RUNNING` / `STOPPED` badge in the
+  top-right corner so you always know what the runner is doing.
+* **DCS-BIOS data stream monitor** — top panel shows whether the BIOS stream
+  is being received from DCS, so you can confirm the export is hooked up
+  before pressing Start.
+* **REALTIME DATA panel** — live readouts from the cockpit (fuel state,
+  engine RPM, APU NG, bleed pressure, etc., depending on what the active
+  script subscribes to).
+* **Output console** — scrolling log of every command the script sends,
+  including DCS-BIOS calls, keyboard inputs, and text-to-speech announcements.
+* **Light / Dark mode** — toggleable from the Config window. Dark mode is
+  easier on the eyes when alt-tabbing between DCS and the runner.
+* **Configurable** — Debug mode (run scripts without actually sending data
+  to DCS), Disable Text-to-Speech, DCS window detection by title or executable
+  path, custom DCS Saved Games path.
+
+## Aircraft scripts included
+
+This fork ships the upstream aircraft library *plus* the C-130J-30:
+
+| Module | Scripts | Status |
+|-|-|-|
+| C-130J-30 (Anubis) | Cold Start (Day/Night, External Power), Shutdown, Test: Engine Switch Click | 🚧 WIP — added in this fork |
+| All upstream modules (A-10C, F-16C, F-14, F/A-18C, AH-64D, F-15E, etc.) | as shipped by [SlipHavoc/DCSAutoMate](https://github.com/SlipHavoc/DCSAutoMate) | ✅ unchanged |
+
+### C-130J Cold Start — what it does
+
+Cold Start follows the in-game checklist sequence:
+
+* **POWER UP** — control boost, oil coolers, electrical pre-stage, ice protection,
+  bleed air, pressurisation, fuel management, exterior lighting, FADEC / propeller / ATCS,
+  fire / engine start panel, APU, gear, landing lights, hydraulics, defensive systems STBY,
+  trim, flaps, parking brake.
+* **BATTERY ON** — display backlights, optional EXT POWER, APU start to 100% N1,
+  APU bleed open to 40 PSI, A/C panel, master caution reset, full ECB reset via the
+  CNBP code page, elevator trim to NORM.
+* **BEFORE STARTING ENGINES** — aux + suction boost pumps, parking brake re-verify.
+* **STARTING ENGINES** — bleed valve verify, FADEC RESET cycle, nav lights, all four
+  engines start together, 30-second spool-up hold, engines released to RUN,
+  generators online.
+* **BEFORE TAXI** — propeller controls, radar, prop ice protection, alignment wait.
+* **TAXI** — taxi and wingtip taxi lights, flaps 50%.
+* **BEFORE TAKEOFF** — pitot/NESA heat, landing lights extend, leading edge, fuel
+  cross-feeds verified, full CNI-MU defensive setup (MSTR / MWS / IRCM power on,
+  OTHER1/2 armed, JMR INTF on, RWR SHOW UNK), defensive systems to OPR / AUTO,
+  ADP computer drop, pilot HUD configured, ARC-210 TR+G + SQL, standby ADI
+  alignment, ATCS reassert.
+* **Night-mode block** (if `Time = Night`) — internal cockpit lights off, displays
+  to lowest brightness, both CNI-MU brightness rockers clicked all the way down,
+  external lights on, EXT master to NORM.
+* **Final** — pilot HUD brightness AUTO, LSGI on all four engines, ATCS down,
+  pitot/NESA heat down, FADEC guards closed, prop sync engaged, multi-cycle
+  master caution + master warning suppression on pilot and copilot, then both
+  CNI-MUs navigated to POWER UP and **AUTONAV + MSTR AV ON** engaged on both.
+
+Lamp / display / fire / smoke / brake / trim / lights / pusher BIT tests are
+deliberately skipped — they are pilot-action items in the real checklist and
+do not affect DCS mission readiness. Runtime is roughly five minutes.
+
+### Requirements for the C-130J scripts
+
+* DCS World 2.9.x
+* Anubis Productions **C-130J-30** mod installed
+* Matching DCS-BIOS C-130J module from
+  [`Arcanum115/dcs-bios`](https://github.com/Arcanum115/dcs-bios) — needed for
+  `FADEC_GUARD_*`, `PLT_MASTER_CAUTION`, `PLT_CNI_INDX`, `CPLT_CNI_BRT_ROCKER`,
+  and the overhead-LCD string outputs (`APU_NG`, `BLEED_AIR_PRESSURE`, etc.)
+
+---
+
+This script uses DCS-BIOS (specifically, **this fork's matching build at [`Arcanum115/dcs-bios`](https://github.com/Arcanum115/dcs-bios)**) to send commands to DCS.  It also uses [pydirectinput](https://github.com/learncodebygaming/pydirectinput) to send keyboard commands.
+
+> **Important:** the C-130J Cold Start / Shutdown scripts depend on controls and outputs that are defined in `Arcanum115/dcs-bios` and are **not** present in upstream `DCS-Skunkworks/dcs-bios` or the older DCSFlightpanels fork. Install the matching DCS-BIOS fork before running C-130J scripts, otherwise you will see "switch not found" errors or `int()` cast failures on `APU_NG` / `BLEED_AIR_PRESSURE`. Upstream aircraft (A-10C, F-16C, F-14, etc.) work with either DCS-BIOS distribution.
 
 This is intended to replace the existing built-in autostart scripts in DCS, which after v.2.8 became subject to the "Pure Scipts" flag on multiplayer servers.  In order to modify the built-in startup scripts, you have to change the actual game files, which makes them fail the IC check if Pure Scripts is enabled.  DCSAutoMate is not affected by this check because it sends the commands to DCS via DCS BIOS, which is in the user-editable files in Saved Games.
 
@@ -11,7 +110,11 @@ DCSAutoMate can also be used to script any other cockpit commands, such as addin
 
 **Installation and setup**
 
-1. Install the [DCS Flightpanels fork of DCS BIOS](https://github.com/DCSFlightpanels/dcs-bios).  To install, copy the DCS-BIOS folder into C:\Users\\<username\>\Saved Games\DCS\Scripts, and add the line in Export.lua to your Export.lua (see instructions on DCS BIOS page for details).
+1. Install the matching DCS-BIOS fork: **[`Arcanum115/dcs-bios`](https://github.com/Arcanum115/dcs-bios)**. Grab the latest release zip (e.g. `DCS-BIOS_v0.11.1-c130j.1.zip`), extract it, and copy the `DCS-BIOS` folder into `C:\Users\<username>\Saved Games\DCS\Scripts`. Add the following line to your `Export.lua` in that folder (create the file if it doesn't exist):
+
+	`dofile(lfs.writedir()..[[Scripts\DCS-BIOS\BIOS.lua]])`
+
+   > Upstream `DCS-Skunkworks/dcs-bios` or the older DCSFlightpanels fork will *not* work for the C-130J scripts — the C-130J cockpit controls (FADEC guards, CNI-MU, master caution/warning, overhead LCDs, etc.) are only defined in the Arcanum115 fork. Upstream aircraft scripts will run fine with either DCS-BIOS distribution.
 2. Download the DCSAutoMate.zip file and extract to a folder of your choice.
 3. (Optional, but allows displaying additional realtime data in the program) Copy DCSAutoMateExport.lua to C:\Users\\<username\>\Saved Games\DCS\Scripts.  And add the following line to the Export.lua file in that folder:
 

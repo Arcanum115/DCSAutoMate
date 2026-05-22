@@ -325,7 +325,7 @@ def ColdStartWithJester(config, vars):
 
 	pushSeqCmd(4, '', '', 'Wait for Jester prompt.')
 	#pushSeqCmd(dt, 'PLT_JESTER_COMMAND_CREW_START_ALIGNMENT', 'TOGGLE') # Pass 'TOGGLE' to trigger command.
-	pushSeqCmd(dt, 'scriptKeyboard', 'w')
+	pushSeqCmd(dt, 'scriptKeyboard', 'a')
 	pushSeqCmd(2, '', '', 'Wait for Jester prompt.')
 	#pushSeqCmd(dt, 'PILOT_JESTER_OPTION_2 ', 'TOGGLE') # Pass 'TOGGLE' to trigger command.
 	# Select "BATH alignment".
@@ -334,7 +334,7 @@ def ColdStartWithJester(config, vars):
 	pushSeqCmd(dt, 'scriptKeyboard', 'LCtrl up')
 
 	pushSeqCmd(5, '', '', 'Wait for Jester prompt.')
-	pushSeqCmd(dt, 'scriptKeyboard', 'w')
+	pushSeqCmd(dt, 'scriptKeyboard', 'a')
 	pushSeqCmd(2, '', '', 'Wait for Jester prompt.')
 	# Select "Yep".
 	pushSeqCmd(dt, 'scriptKeyboard', 'LCtrl down')
@@ -347,7 +347,7 @@ def ColdStartWithJester(config, vars):
 	pushSeqCmd(dt, 'PLT_RADAR_ALT_MOVE_BUG', "+3200")
 
 	# DSCG screen mode switch
-	pushSeqCmd(dt, 'PLT_RADAR_SCREEN_MODE', 0) # 0 = RADAR, 1 = OFF, 2 = TV
+	pushSeqCmd(dt, 'PLT_RADAR_SCREEN_MODE', 1) # 0 = RADAR, 1 = OFF, 2 = TV
 
 	# IFF
 	pushSeqCmd(dt, 'PLT_IFF_MASTER', 3) # 0 = OFF, 1 = STBY, 2 = LOW, 3 = NOR, 4 = EMER
@@ -359,7 +359,7 @@ def ColdStartWithJester(config, vars):
 	pushSeqCmd(dt, 'PLT_SAI_CAGE', 0)
 
 	# Sight mode
-	pushSeqCmd(dt, 'PLT_HUD_MODE', 2) # 0 = OFF, 1 = STBY, 2 = CAGE, 3 = A/G, 4 = A/A, 5 = BIT 1, 6 = BIT 2
+	pushSeqCmd(dt, 'PLT_HUD_MODE', 3) # 0 = OFF, 1 = STBY, 2 = CAGE, 3 = A/G, 4 = A/A, 5 = BIT 1, 6 = BIT 2
 
 	# ADI flight director switch
 	pushSeqCmd(dt, 'PLT_FDC_FLIGHT_DIRECTOR', 1)
@@ -422,7 +422,7 @@ def ColdStartWithJester(config, vars):
 	# Jester, radar auto-focus on.
 	#pushSeqCmd(dt, 'F-4E/PLT_JESTER_COMMAND_RADAR_AUTO_FOCUS_ON', 'TOGGLE') # FIXME This doesn't work.
 
-	pushSeqCmd(dt, 'scriptSpeech', "Manual steps remaining: Lights, Radios.  If carrying drop tanks set External Tanks Feed switch.  Set takeoff trim, 2 units nose down.  Set up Jester as needed.")
+	pushSeqCmd(dt, 'scriptSpeech', "  If carrying drop tanks set External Tanks Feed switch.  Set takeoff trim, 2 units nose down.  Set up Jester as needed.")
 
 	return seq
 

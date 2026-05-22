@@ -32,15 +32,15 @@ def getScriptData():
 				'function': 'Shutdown',
 				'vars': {},
 			},
-			#{
-			#	'name': 'Test',
-			#	'function': 'Test',
-			#	'vars': {
-			#		'Time': ['Day', 'Night'],
-			#		'Location': ['Ground', 'Carrier'],
-			#		'HMD': ['With HMD', 'No HMD'],
-			#	},
-			#},
+			{
+				'name': 'Test',
+				'function': 'Test',
+				'vars': {
+					'Time': ['Day', 'Night'],
+					'Location': ['Ground', 'Carrier'],
+					'HMD': ['With HMD', 'No HMD'],
+				},
+			},
 		],
 	}
 

@@ -571,7 +571,7 @@ def ColdStart(config, vars):
 	# BRAKEHOLD switch ... OFF (right lower instrument panel)
 	pushSeqCmd(dt, 'F_B_P_BRAKE', 0)
 
-	pushSeqCmd(dt, 'scriptSpeech', "Manual steps remaining: Set up armament page.  Set laser code.  Set lights.  Tune radios.")
+	pushSeqCmd(dt, 'scriptSpeech', "Script complete, now get the fuck off my airfield.")
 
 	return seq
 
@@ -910,7 +910,7 @@ def HotStart(config, vars):
 	])
 	# END SET UP BACK SEAT
 
-	pushSeqCmd(dt, 'scriptSpeech', "Manual steps remaining: Set up armament page.  Set laser code.  Set lights.  Tune radios.")
+	pushSeqCmd(dt, 'scriptSpeech', "Script complete, now get the fuck off my airfield.")
 
 	return seq
 
@@ -1436,4 +1436,5 @@ def Shutdown(config, vars):
 	pushSeqCmd(dt, 'F_IN_RAMP_L_SW', 1) # 0 = AUTO, 1 = EMERG
 	pushSeqCmd(dt, 'F_IN_RAMP_R_SW', 1) # 0 = AUTO, 1 = EMERG
 
+	pushSeqCmd(dt, 'scriptSpeech', "Script complete, The crew cheif would like to have a word with you with his baseball bat.")
 	return seq

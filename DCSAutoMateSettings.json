@@ -1,0 +1,161 @@
+{
+    "lastUsedModule": "C-130J",
+    "lastUsedScripts": {
+        "A-10C": "Cold Start",
+        "F-4E": "Cold Start With Jester",
+        "F-15E": "Cold Start",
+        "FA-18C": "Cold Start",
+        "F-16C": "Shutdown",
+        "A-4E": "Cold Start",
+        "A-10C_2": "Cold Start",
+        "C-130J": "Cold Start",
+        "Mi-24P": "Cold Start"
+    },
+    "lastUsedVars": [
+        {
+            "module": "A-10C",
+            "script": "Cold Start",
+            "vars": {
+                "Time": "Day"
+            }
+        },
+        {
+            "module": "F-4E",
+            "script": "Cold Start With Jester",
+            "vars": {
+                "Time": "Day",
+                "Alignment": "BATH"
+            }
+        },
+        {
+            "module": "F-15E",
+            "script": "Cold Start",
+            "vars": {
+                "Time": "Day",
+                "External Power": "No",
+                "Alignment": "Stored Heading"
+            }
+        },
+        {
+            "module": "FA-18C",
+            "script": "Cold Start",
+            "vars": {
+                "Time": "Night",
+                "Location": "Carrier",
+                "HMD": "No HMD"
+            }
+        },
+        {
+            "module": "FA-18C",
+            "script": "Shutdown",
+            "vars": {
+                "Time": "Day",
+                "Alignment": "Stored Heading"
+            }
+        },
+        {
+            "module": "F-15E",
+            "script": "Shutdown",
+            "vars": {
+                "Time": "Day",
+                "External Power": "No"
+            }
+        },
+        {
+            "module": "F-16C",
+            "script": "Cold Start",
+            "vars": {
+                "Time": "Day",
+                "Alignment": "Stored Heading"
+            }
+        },
+        {
+            "module": "F-16C",
+            "script": "Shutdown",
+            "vars": {
+                "Time": "Night",
+                "External Power": "No"
+            }
+        },
+        {
+            "module": "F-15E",
+            "script": "Hot Start",
+            "vars": {
+                "Time": "Day",
+                "Alignment": "Stored Heading"
+            }
+        },
+        {
+            "module": "A-4E",
+            "script": "Cold Start",
+            "vars": {
+                "Time": "Night",
+                "Location": "Carrier",
+                "HMD": "No HMD"
+            }
+        },
+        {
+            "module": "A-10C_2",
+            "script": "Cold Start",
+            "vars": {
+                "Time": "Day"
+            }
+        },
+        {
+            "module": "C-130J",
+            "script": "Cold Start (Full Auto)",
+            "vars": {}
+        },
+        {
+            "module": "C-130J",
+            "script": "Cold Start",
+            "vars": {
+                "Time": "Day",
+                "External Power": "No"
+            }
+        },
+        {
+            "module": "C-130J",
+            "script": "Shutdown",
+            "vars": {
+                "Time": "Night",
+                "External Power": "No"
+            }
+        },
+        {
+            "module": "C-130J",
+            "script": "Test: Engine Switch Position",
+            "vars": {
+                "Time": "Night",
+                "Alignment": "Stored Heading"
+            }
+        },
+        {
+            "module": "C-130J",
+            "script": "Test: Engine Switch Click",
+            "vars": {
+                "Time": "Night",
+                "External Power": "No",
+                "Direction": "1"
+            }
+        },
+        {
+            "module": "C-130J",
+            "script": "Cold Start Test",
+            "vars": {}
+        },
+        {
+            "module": "Mi-24P",
+            "script": "Cold Start",
+            "vars": {}
+        },
+        {
+            "module": "Mi-24P",
+            "script": "Hot Start",
+            "vars": {
+                "Time": "Night",
+                "External Power": "No"
+            }
+        }
+    ]
+}

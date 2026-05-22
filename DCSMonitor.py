@@ -9,6 +9,48 @@ import pyperclip
 import importlib
 
 class DCSMonitorApp:
+	CONFIG_FILE = 'DCSAutoMateConfig.json'
+
+	# Theme definitions (same as DCSAutoMate)
+	THEMES = {
+		'light': {
+			'bg': '#e8edf2', 'fg': '#1a1a2e', 'text_bg': '#ffffff', 'text_fg': '#1a1a2e',
+			'button_bg': '#4a6fa5', 'button_fg': '#ffffff', 'button_hover': '#3a5f95',
+			'button_disabled_bg': '#a0b4cc', 'button_disabled_fg': '#e0e0e0',
+			'label_bg': '#e8edf2', 'label_fg': '#1a1a2e',
+			'frame_bg': '#e8edf2', 'panel_bg': '#f0f3f7',
+			'labelframe_bg': '#f0f3f7', 'labelframe_fg': '#4a6fa5',
+			'menu_bg': '#e8edf2', 'menu_fg': '#1a1a2e',
+			'entry_bg': '#ffffff', 'entry_fg': '#1a1a2e',
+			'listbox_bg': '#ffffff', 'listbox_fg': '#1a1a2e',
+			'select_bg': '#4a6fa5', 'select_fg': '#ffffff',
+			'scrollbar_bg': '#d0d8e4',
+			'output_bg': '#1a1a2e', 'output_fg': '#4ade80',
+			'accent': '#4a6fa5', 'accent_fg': '#ffffff',
+			'border': '#b8c5d4', 'header_bg': '#4a6fa5', 'header_fg': '#ffffff',
+			'status_ok': '#22c55e', 'status_warn': '#f59e0b', 'status_error': '#ef4444',
+			'separator': '#b8c5d4',
+		},
+		'dark': {
+			'bg': '#0a0e17', 'fg': '#c8d6e5', 'text_bg': '#0d1117', 'text_fg': '#c8d6e5',
+			'button_bg': '#1a3a5c', 'button_fg': '#4ade80', 'button_hover': '#1e4d7a',
+			'button_disabled_bg': '#1a2332', 'button_disabled_fg': '#4a5568',
+			'label_bg': '#0a0e17', 'label_fg': '#8892a0',
+			'frame_bg': '#0a0e17', 'panel_bg': '#0d1321',
+			'labelframe_bg': '#0d1321', 'labelframe_fg': '#4ade80',
+			'menu_bg': '#0d1321', 'menu_fg': '#c8d6e5',
+			'entry_bg': '#131b2e', 'entry_fg': '#e2e8f0',
+			'listbox_bg': '#0d1117', 'listbox_fg': '#c8d6e5',
+			'select_bg': '#1a3a5c', 'select_fg': '#4ade80',
+			'scrollbar_bg': '#131b2e',
+			'output_bg': '#050a12', 'output_fg': '#4ade80',
+			'accent': '#4ade80', 'accent_fg': '#0a0e17',
+			'border': '#1a2744', 'header_bg': '#0d1321', 'header_fg': '#4ade80',
+			'status_ok': '#4ade80', 'status_warn': '#fbbf24', 'status_error': '#f87171',
+			'separator': '#1a2744',
+		},
+	}
+
 	def __init__(self, root):
 		self.refreshRate = 1000 # milliseconds
 
@@ -16,6 +58,9 @@ class DCSMonitorApp:
 		self.root.title('DCS Monitor')
 		self.root.geometry('1600x900')
 		root.protocol('WM_DELETE_WINDOW', lambda: (self.dcsBiosManager.stop(), self.dcsAutoMateManager.stop(), root.destroy()))
+
+		# Load config for dark mode setting
+		self.config = self.loadConfig()
 
 		self.jsonDirectory = os.path.join(
 			os.environ['USERPROFILE'],
@@ -40,8 +85,115 @@ class DCSMonitorApp:
 		self.createWidgets()
 		self.updateControlList()
 
+		# Add menu bar with View > Dark Mode toggle
+		menuBar = tk.Menu(self.root)
+		self.root.config(menu=menuBar)
+		viewMenu = tk.Menu(menuBar, tearoff=0)
+		menuBar.add_cascade(label='View', menu=viewMenu)
+		self.darkModeVar = tk.BooleanVar(value=self.config.get('darkMode', False))
+		viewMenu.add_checkbutton(label='Dark Mode', variable=self.darkModeVar, command=self.toggleDarkMode)
+
+		# Apply theme after all widgets are created
+		self.applyTheme()
+
 		self.updateDataMonitoring()
 		self.selectModule()
+
+	def loadConfig(self):
+		config = {'darkMode': False}
+		try:
+			if os.path.exists(self.CONFIG_FILE):
+				with open(self.CONFIG_FILE, 'r') as f:
+					config = json.load(f)
+		except Exception:
+			pass
+		return config
+
+	def getTheme(self):
+		return self.THEMES['dark'] if self.config.get('darkMode', False) else self.THEMES['light']
+
+	def toggleDarkMode(self):
+		self.config['darkMode'] = self.darkModeVar.get()
+		# Save back to the shared config file
+		try:
+			fullConfig = {}
+			if os.path.exists(self.CONFIG_FILE):
+				with open(self.CONFIG_FILE, 'r') as f:
+					fullConfig = json.load(f)
+			fullConfig['darkMode'] = self.config['darkMode']
+			with open(self.CONFIG_FILE, 'w') as f:
+				json.dump(fullConfig, f, indent=4)
+		except Exception:
+			pass
+		self.applyTheme()
+
+	def applyTheme(self):
+		theme = self.getTheme()
+
+		style = ttk.Style()
+		style.theme_use('clam')
+		style.configure('TCombobox',
+			fieldbackground=theme['entry_bg'], background=theme['button_bg'],
+			foreground=theme['entry_fg'], selectbackground=theme['select_bg'],
+			selectforeground=theme['select_fg'], arrowcolor=theme['accent'],
+			bordercolor=theme['border'], lightcolor=theme['entry_bg'], darkcolor=theme['entry_bg'],
+		)
+		style.map('TCombobox',
+			fieldbackground=[('readonly', theme['entry_bg'])],
+			foreground=[('readonly', theme['entry_fg'])],
+			bordercolor=[('focus', theme['accent'])],
+		)
+
+		self._applyThemeToWidget(self.root, theme)
+		self.root.config(bg=theme['bg'])
+
+	def _applyThemeToWidget(self, widget, theme):
+		widgetClass = widget.winfo_class()
+		try:
+			if widgetClass in ('Frame', 'Toplevel'):
+				widget.config(bg=theme['frame_bg'])
+			elif widgetClass == 'Label':
+				widget.config(bg=theme['label_bg'], fg=theme['label_fg'])
+			elif widgetClass == 'Button':
+				widget.config(bg=theme['button_bg'], fg=theme['button_fg'],
+					activebackground=theme['button_hover'], activeforeground=theme['button_fg'],
+					relief='flat', borderwidth=0)
+			elif widgetClass == 'Text':
+				widget.config(bg=theme['output_bg'], fg=theme['output_fg'],
+					insertbackground=theme['accent'], relief='flat', borderwidth=0,
+					selectbackground=theme['select_bg'], selectforeground=theme['select_fg'])
+			elif widgetClass == 'Listbox':
+				widget.config(bg=theme['listbox_bg'], fg=theme['listbox_fg'],
+					selectbackground=theme['select_bg'], selectforeground=theme['select_fg'],
+					relief='flat', borderwidth=0)
+			elif widgetClass == 'Entry':
+				widget.config(bg=theme['entry_bg'], fg=theme['entry_fg'],
+					insertbackground=theme['accent'], relief='flat', borderwidth=1,
+					highlightbackground=theme['border'], highlightcolor=theme['accent'],
+					highlightthickness=1)
+			elif widgetClass == 'Labelframe':
+				widget.config(bg=theme['panel_bg'], fg=theme['labelframe_fg'],
+					relief='flat', borderwidth=1,
+					highlightbackground=theme['border'], highlightcolor=theme['border'],
+					highlightthickness=1)
+			elif widgetClass == 'Checkbutton':
+				widget.config(bg=theme['panel_bg'], fg=theme['fg'],
+					activebackground=theme['panel_bg'], activeforeground=theme['fg'],
+					selectcolor=theme['entry_bg'])
+			elif widgetClass == 'Menu':
+				widget.config(bg=theme['menu_bg'], fg=theme['menu_fg'],
+					activebackground=theme['select_bg'], activeforeground=theme['select_fg'],
+					borderwidth=0)
+			elif widgetClass == 'Scrollbar':
+				widget.config(bg=theme['scrollbar_bg'], troughcolor=theme['bg'],
+					relief='flat', borderwidth=0, width=10)
+			elif widgetClass == 'Tk':
+				widget.config(bg=theme['bg'])
+		except tk.TclError:
+			pass
+
+		for child in widget.winfo_children():
+			self._applyThemeToWidget(child, theme)
 
 	def createWidgets(self):
 		controlsFrame = tk.Frame(self.root)

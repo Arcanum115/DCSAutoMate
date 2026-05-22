@@ -32,6 +32,84 @@ class DCSAutoMateApp:
 	SETTINGS_FILE = 'DCSAutoMateSettings.json'
 	CONFIG_FILE = 'DCSAutoMateConfig.json'
 
+	# Theme definitions
+	THEMES = {
+		'light': {
+			'bg': '#e8edf2',
+			'fg': '#1a1a2e',
+			'text_bg': '#ffffff',
+			'text_fg': '#1a1a2e',
+			'button_bg': '#4a6fa5',
+			'button_fg': '#ffffff',
+			'button_hover': '#3a5f95',
+			'button_disabled_bg': '#a0b4cc',
+			'button_disabled_fg': '#e0e0e0',
+			'label_bg': '#e8edf2',
+			'label_fg': '#1a1a2e',
+			'frame_bg': '#e8edf2',
+			'panel_bg': '#f0f3f7',
+			'labelframe_bg': '#f0f3f7',
+			'labelframe_fg': '#4a6fa5',
+			'menu_bg': '#e8edf2',
+			'menu_fg': '#1a1a2e',
+			'entry_bg': '#ffffff',
+			'entry_fg': '#1a1a2e',
+			'listbox_bg': '#ffffff',
+			'listbox_fg': '#1a1a2e',
+			'select_bg': '#4a6fa5',
+			'select_fg': '#ffffff',
+			'scrollbar_bg': '#d0d8e4',
+			'output_bg': '#1a1a2e',
+			'output_fg': '#4ade80',
+			'accent': '#4a6fa5',
+			'accent_fg': '#ffffff',
+			'border': '#b8c5d4',
+			'header_bg': '#4a6fa5',
+			'header_fg': '#ffffff',
+			'status_ok': '#22c55e',
+			'status_warn': '#f59e0b',
+			'status_error': '#ef4444',
+			'separator': '#b8c5d4',
+		},
+		'dark': {
+			'bg': '#0a0e17',
+			'fg': '#c8d6e5',
+			'text_bg': '#0d1117',
+			'text_fg': '#c8d6e5',
+			'button_bg': '#1a3a5c',
+			'button_fg': '#4ade80',
+			'button_hover': '#1e4d7a',
+			'button_disabled_bg': '#1a2332',
+			'button_disabled_fg': '#4a5568',
+			'label_bg': '#0a0e17',
+			'label_fg': '#8892a0',
+			'frame_bg': '#0a0e17',
+			'panel_bg': '#0d1321',
+			'labelframe_bg': '#0d1321',
+			'labelframe_fg': '#4ade80',
+			'menu_bg': '#0d1321',
+			'menu_fg': '#c8d6e5',
+			'entry_bg': '#131b2e',
+			'entry_fg': '#e2e8f0',
+			'listbox_bg': '#0d1117',
+			'listbox_fg': '#c8d6e5',
+			'select_bg': '#1a3a5c',
+			'select_fg': '#4ade80',
+			'scrollbar_bg': '#131b2e',
+			'output_bg': '#050a12',
+			'output_fg': '#4ade80',
+			'accent': '#4ade80',
+			'accent_fg': '#0a0e17',
+			'border': '#1a2744',
+			'header_bg': '#0d1321',
+			'header_fg': '#4ade80',
+			'status_ok': '#4ade80',
+			'status_warn': '#fbbf24',
+			'status_error': '#f87171',
+			'separator': '#1a2744',
+		},
+	}
+
 	def __init__(self, root):
 		log('Starting DCSAutoMate...')
 		self.config = self.getConfig()
@@ -39,6 +117,7 @@ class DCSAutoMateApp:
 		self.root = root
 		self.root.title('DCS AutoMate')
 		self.root.geometry('1280x960')
+		self.root.minsize(900, 600)
 		self.root.protocol("WM_DELETE_WINDOW", self.onClose)
 
 		# Create the menu bar
@@ -48,57 +127,121 @@ class DCSAutoMateApp:
 		menuBar.add_cascade(label='Config', menu=configMenu)
 		configMenu.add_command(label='Edit Config', command=self.openConfigWindow)
 
-		# Create a frame to hold the DBE status label and the real-time DCS data.
-		statusFrame = tk.Frame(root)
-		statusFrame.grid(row=0, column=1, sticky='ne')
+		# View menu with dark mode toggle
+		viewMenu = tk.Menu(menuBar, tearoff=0)
+		menuBar.add_cascade(label='View', menu=viewMenu)
+		self.darkModeVar = tk.BooleanVar(value=self.config.get('darkMode', False))
+		viewMenu.add_checkbutton(label='Dark Mode', variable=self.darkModeVar, command=self.toggleDarkMode)
 
-		# Add a status label for the Cockpit State Manager
-		self.DBEStatusLabel = tk.Label(statusFrame, text='')
-		self.DBEStatusLabel.pack(side='top', pady=5)
+		# ── HEADER BAR ──────────────────────────────────────────
+		headerFrame = tk.Frame(root, height=50)
+		headerFrame.grid(row=0, column=0, columnspan=2, sticky='ew')
+		headerFrame.grid_propagate(False)
 
-		# Add a LabelFrame for real-time DCS data
-		self.realtimeDataFrame = tk.LabelFrame(statusFrame, text="Realtime DCS Data", padx=10, pady=10)
-		self.realtimeDataFrame.pack(side='top', anchor='ne', padx=10, pady=10, fill='both', expand=False)
-		# Create a label for displaying real-time data
-		self.realtimeDataLabel = tk.Label(self.realtimeDataFrame, text="", justify='left', anchor='w')
-		self.realtimeDataLabel.pack(anchor='w')
+		self.headerTitle = tk.Label(headerFrame, text='  DCS AUTOMATE', anchor='w',
+			font=('Consolas', 16, 'bold'))
+		self.headerTitle.pack(side='left', padx=15, fill='y')
 
-		# Create a frame to hold the main controls
-		mainFrame = tk.Frame(root)
-		mainFrame.grid(row=0, column=0, sticky='ne')
+		self.headerSubtitle = tk.Label(headerFrame, text='COCKPIT AUTOMATION SYSTEM',
+			anchor='w', font=('Consolas', 9))
+		self.headerSubtitle.pack(side='left', padx=5, fill='y')
 
-		# Select script file control
-		tk.Label(mainFrame, text='Select script file:').pack(pady=5)
-		self.moduleDropdown = ttk.Combobox(mainFrame, state='readonly')
+		# Status indicator in header
+		self.headerStatus = tk.Label(headerFrame, text='  READY  ',
+			font=('Consolas', 9, 'bold'))
+		self.headerStatus.pack(side='right', padx=15, fill='y')
+
+		# ── SEPARATOR ───────────────────────────────────────────
+		self.headerSep = tk.Frame(root, height=2)
+		self.headerSep.grid(row=1, column=0, columnspan=2, sticky='ew')
+
+		# ── MAIN CONTENT AREA ───────────────────────────────────
+		contentFrame = tk.Frame(root)
+		contentFrame.grid(row=2, column=0, columnspan=2, sticky='nsew', padx=10, pady=10)
+
+		# ── LEFT PANEL: Controls ────────────────────────────────
+		leftPanel = tk.Frame(contentFrame, width=320)
+		leftPanel.pack(side='left', fill='y', padx=(0, 10))
+		leftPanel.pack_propagate(False)
+
+		# Module selection panel
+		modulePanel = tk.LabelFrame(leftPanel, text=' MODULE ', font=('Consolas', 9, 'bold'),
+			padx=12, pady=8)
+		modulePanel.pack(fill='x', pady=(0, 8))
+
+		tk.Label(modulePanel, text='Script File:', font=('Consolas', 9), anchor='w').pack(fill='x', pady=(2, 4))
+		self.moduleDropdown = ttk.Combobox(modulePanel, state='readonly', font=('Consolas', 10))
 		self.moduleDropdown.bind('<<ComboboxSelected>>', self.onModuleChange)
-		self.moduleDropdown.pack(pady=10)
+		self.moduleDropdown.pack(fill='x', pady=(0, 6))
 
-		# Select script control
-		tk.Label(mainFrame, text='Select script:').pack(pady=5)
-		self.scriptDropdown = ttk.Combobox(mainFrame, state='readonly')
+		tk.Label(modulePanel, text='Script:', font=('Consolas', 9), anchor='w').pack(fill='x', pady=(2, 4))
+		self.scriptDropdown = ttk.Combobox(modulePanel, state='readonly', font=('Consolas', 10))
 		self.scriptDropdown.bind('<<ComboboxSelected>>', self.onScriptChange)
-		self.scriptDropdown.pack(pady=10)
+		self.scriptDropdown.pack(fill='x', pady=(0, 4))
 
-		# Add a container for the script variables, these will be radio buttons.
-		self.varContainer = tk.Frame(mainFrame)
-		self.varContainer.pack(pady=10)
+		# Variables panel
+		varsPanel = tk.LabelFrame(leftPanel, text=' OPTIONS ', font=('Consolas', 9, 'bold'),
+			padx=12, pady=8)
+		varsPanel.pack(fill='x', pady=(0, 8))
+
+		self.varContainer = tk.Frame(varsPanel)
+		self.varContainer.pack(fill='x', pady=4)
 		self.varControls = {}
 
-		# Create a frame to hold the Start and Stop buttons side by side.
-		buttonFrame = tk.Frame(mainFrame)
-		buttonFrame.pack(pady=5)
-		self.startButton = tk.Button(buttonFrame, text='Start', command=self.runScript, state='disabled')
-		self.startButton.pack(side='left', padx=5)
-		self.stopButton = tk.Button(buttonFrame, text='Stop', command=self.stopScript, state='disabled')
-		self.stopButton.pack(side='left', padx=5)
+		# Control buttons panel
+		controlPanel = tk.LabelFrame(leftPanel, text=' CONTROL ', font=('Consolas', 9, 'bold'),
+			padx=12, pady=8)
+		controlPanel.pack(fill='x', pady=(0, 8))
 
-		# Create a frame to hold the output text box
-		outputFrame = tk.Frame(root)
-		outputFrame.grid(row=1, column=0, columnspan=2, sticky='nsew')
+		buttonFrame = tk.Frame(controlPanel)
+		buttonFrame.pack(fill='x', pady=4)
 
-		scrollbarY = tk.Scrollbar(outputFrame, orient='vertical')
-		scrollbarX = tk.Scrollbar(outputFrame, orient='horizontal')
-		self.outputBox = tk.Text(outputFrame, wrap='none', yscrollcommand=scrollbarY.set, xscrollcommand=scrollbarX.set)
+		self.startButton = tk.Button(buttonFrame, text='START', command=self.runScript,
+			state='disabled', font=('Consolas', 11, 'bold'),
+			relief='flat', cursor='hand2', width=10, height=1)
+		self.startButton.pack(side='left', padx=(0, 8), ipady=4)
+
+		self.stopButton = tk.Button(buttonFrame, text='STOP', command=self.stopScript,
+			state='disabled', font=('Consolas', 11, 'bold'),
+			relief='flat', cursor='hand2', width=10, height=1)
+		self.stopButton.pack(side='left', ipady=4)
+
+		# ── RIGHT PANEL: Status + Output ────────────────────────
+		rightPanel = tk.Frame(contentFrame)
+		rightPanel.pack(side='left', fill='both', expand=True)
+
+		# Status area at top of right panel
+		statusFrame = tk.Frame(rightPanel)
+		statusFrame.pack(fill='x', pady=(0, 8))
+
+		# DCS BIOS status
+		biosPanel = tk.LabelFrame(statusFrame, text=' DCS-BIOS ', font=('Consolas', 9, 'bold'),
+			padx=10, pady=6)
+		biosPanel.pack(side='left', fill='both', expand=True, padx=(0, 5))
+
+		self.DBEStatusLabel = tk.Label(biosPanel, text='', font=('Consolas', 9), anchor='w', justify='left')
+		self.DBEStatusLabel.pack(fill='x')
+
+		# Realtime data panel
+		dataPanel = tk.LabelFrame(statusFrame, text=' REALTIME DATA ', font=('Consolas', 9, 'bold'),
+			padx=10, pady=6)
+		dataPanel.pack(side='left', fill='both', expand=True, padx=(5, 0))
+
+		self.realtimeDataFrame = dataPanel  # Keep reference for theme compatibility
+		self.realtimeDataLabel = tk.Label(dataPanel, text='No data to show.', font=('Consolas', 9),
+			justify='left', anchor='w')
+		self.realtimeDataLabel.pack(fill='x')
+
+		# Output console
+		outputPanel = tk.LabelFrame(rightPanel, text=' OUTPUT CONSOLE ', font=('Consolas', 9, 'bold'),
+			padx=4, pady=4)
+		outputPanel.pack(fill='both', expand=True)
+
+		scrollbarY = tk.Scrollbar(outputPanel, orient='vertical', width=12)
+		scrollbarX = tk.Scrollbar(outputPanel, orient='horizontal', width=12)
+		self.outputBox = tk.Text(outputPanel, wrap='none',
+			yscrollcommand=scrollbarY.set, xscrollcommand=scrollbarX.set,
+			borderwidth=0, highlightthickness=0, padx=8, pady=8)
 		scrollbarY.config(command=self.outputBox.yview)
 		scrollbarX.config(command=self.outputBox.xview)
 
@@ -108,16 +251,134 @@ class DCSAutoMateApp:
 		self.outputBox.pack(fill='both', expand=True)
 
 		# Configure grid weights
-		self.root.grid_rowconfigure(0, weight=1)
-		self.root.grid_rowconfigure(1, weight=1)
+		self.root.grid_rowconfigure(2, weight=1)
 		self.root.grid_columnconfigure(0, weight=1)
-		self.root.grid_columnconfigure(1, weight=1)
 
 		self.stopFlag = threading.Event()
 
 		self.onProgramStart()
 
 		self.updateUIState()
+
+		# Apply theme after all widgets are created
+		self.applyTheme()
+
+	def getTheme(self):
+		return self.THEMES['dark'] if self.config.get('darkMode', False) else self.THEMES['light']
+
+	def toggleDarkMode(self):
+		self.config['darkMode'] = self.darkModeVar.get()
+		# Save the config so it persists
+		with open(self.CONFIG_FILE, 'w') as file:
+			file.write(json.dumps(self.config, indent=4))
+		self.applyTheme()
+
+	def applyTheme(self):
+		theme = self.getTheme()
+
+		# Style the ttk widgets first
+		style = ttk.Style()
+		style.theme_use('clam')
+
+		style.configure('TCombobox',
+			fieldbackground=theme['entry_bg'],
+			background=theme['button_bg'],
+			foreground=theme['entry_fg'],
+			selectbackground=theme['select_bg'],
+			selectforeground=theme['select_fg'],
+			arrowcolor=theme['accent'],
+			bordercolor=theme['border'],
+			lightcolor=theme['entry_bg'],
+			darkcolor=theme['entry_bg'],
+		)
+		style.configure('TRadiobutton',
+			background=theme['panel_bg'],
+			foreground=theme['fg'],
+			focuscolor=theme['panel_bg'],
+			indicatorcolor=theme['entry_bg'],
+		)
+		style.map('TCombobox',
+			fieldbackground=[('readonly', theme['entry_bg'])],
+			foreground=[('readonly', theme['entry_fg'])],
+			bordercolor=[('focus', theme['accent'])],
+		)
+		style.map('TRadiobutton',
+			background=[('active', theme['panel_bg'])],
+			indicatorcolor=[('selected', theme['accent'])],
+		)
+
+		# Apply to all widgets recursively
+		self._applyThemeToWidget(self.root, theme)
+
+		# Apply special header styling
+		self.headerTitle.config(bg=theme['header_bg'], fg=theme['header_fg'])
+		self.headerSubtitle.config(bg=theme['header_bg'], fg=theme['header_fg'])
+		self.headerStatus.config(bg=theme['header_bg'], fg=theme['status_ok'])
+		self.headerTitle.master.config(bg=theme['header_bg'])
+		self.headerSep.config(bg=theme['accent'])
+
+		# Style the buttons specially
+		self.startButton.config(bg=theme['accent'], fg=theme['accent_fg'],
+			activebackground=theme['button_hover'], activeforeground=theme['accent_fg'],
+			disabledforeground=theme['button_disabled_fg'])
+		self.stopButton.config(bg=theme.get('status_error', '#ef4444'), fg='#ffffff',
+			activebackground='#dc2626', activeforeground='#ffffff',
+			disabledforeground=theme['button_disabled_fg'])
+
+		# Style output box
+		self.outputBox.config(bg=theme['output_bg'], fg=theme['output_fg'],
+			insertbackground=theme['accent'])
+
+		self.root.config(bg=theme['bg'])
+
+	def _applyThemeToWidget(self, widget, theme):
+		widgetClass = widget.winfo_class()
+		try:
+			if widgetClass in ('Frame', 'Toplevel'):
+				widget.config(bg=theme['frame_bg'])
+			elif widgetClass == 'Label':
+				widget.config(bg=theme['label_bg'], fg=theme['label_fg'])
+			elif widgetClass == 'Button':
+				widget.config(bg=theme['button_bg'], fg=theme['button_fg'],
+					activebackground=theme['button_hover'], activeforeground=theme['button_fg'],
+					relief='flat', borderwidth=0)
+			elif widgetClass == 'Text':
+				widget.config(bg=theme['output_bg'], fg=theme['output_fg'],
+					insertbackground=theme['accent'], relief='flat', borderwidth=0,
+					selectbackground=theme['select_bg'], selectforeground=theme['select_fg'])
+			elif widgetClass == 'Listbox':
+				widget.config(bg=theme['listbox_bg'], fg=theme['listbox_fg'],
+					selectbackground=theme['select_bg'], selectforeground=theme['select_fg'],
+					relief='flat', borderwidth=0)
+			elif widgetClass == 'Entry':
+				widget.config(bg=theme['entry_bg'], fg=theme['entry_fg'],
+					insertbackground=theme['accent'], relief='flat', borderwidth=1,
+					highlightbackground=theme['border'], highlightcolor=theme['accent'],
+					highlightthickness=1)
+			elif widgetClass == 'Labelframe':
+				widget.config(bg=theme['panel_bg'], fg=theme['labelframe_fg'],
+					relief='flat', borderwidth=1,
+					highlightbackground=theme['border'], highlightcolor=theme['border'],
+					highlightthickness=1)
+			elif widgetClass == 'Checkbutton':
+				widget.config(bg=theme['panel_bg'], fg=theme['fg'],
+					activebackground=theme['panel_bg'], activeforeground=theme['fg'],
+					selectcolor=theme['entry_bg'], font=('Consolas', 9))
+			elif widgetClass == 'Menu':
+				widget.config(bg=theme['menu_bg'], fg=theme['menu_fg'],
+					activebackground=theme['select_bg'], activeforeground=theme['select_fg'],
+					borderwidth=0)
+			elif widgetClass == 'Scrollbar':
+				widget.config(bg=theme['scrollbar_bg'], troughcolor=theme['bg'],
+					relief='flat', borderwidth=0, width=10)
+			elif widgetClass == 'Tk':
+				widget.config(bg=theme['bg'])
+		except tk.TclError:
+			pass  # Some widgets may not support all config options
+
+		# Recursively apply to children
+		for child in widget.winfo_children():
+			self._applyThemeToWidget(child, theme)
 
 	def onProgramStart(self):
 		# Start the DCS BIOS Export Manager, which begins a thread to monitor the DCS BIOS output data.
@@ -204,14 +465,16 @@ class DCSAutoMateApp:
 	def updateScriptVarsRadioButtons(self, scriptVars, setScriptVars):
 		for widget in self.varContainer.winfo_children():
 			widget.destroy()
+		theme = self.getTheme()
 		for varName, options in scriptVars.items():
-			frame = tk.Frame(self.varContainer)
-			frame.pack(pady=5)
-			tk.Label(frame, text=f'{varName}:').pack(side='left')
+			frame = tk.Frame(self.varContainer, bg=theme['panel_bg'])
+			frame.pack(fill='x', pady=3)
+			tk.Label(frame, text=f'{varName}:', font=('Consolas', 9, 'bold'),
+				bg=theme['panel_bg'], fg=theme['labelframe_fg']).pack(side='left', padx=(0, 8))
 			var = tk.StringVar(value=setScriptVars.get(varName, options[0]))
 			for option in options:
 				rb = ttk.Radiobutton(frame, text=option, variable=var, value=option)
-				rb.pack(side='left')
+				rb.pack(side='left', padx=4)
 			self.varControls[varName] = var
 			# Add a trace to save settings when an option changes
 			var.trace_add("write", lambda *args: self.onVarsRadioButtonChange(None))
@@ -314,19 +577,20 @@ class DCSAutoMateApp:
 		return {}
 
 	def openConfigWindow(self):
+		theme = self.getTheme()
 		configWindow = tk.Toplevel(self.root)
 		configWindow.title('Edit Config')
 		configWindow.sizeX = 700
-		configWindow.sizeY = 550  # Adjusted height to accommodate new control
-		configWindow.geometry(f'{configWindow.sizeX}x{configWindow.sizeY}')  # Adjusted width and height
+		configWindow.sizeY = 600
+		configWindow.geometry(f'{configWindow.sizeX}x{configWindow.sizeY}')
 
 		# Make the config window a child of the main window
 		configWindow.transient(self.root)
 
 		# Center the config window on the main window
-		self.root.update_idletasks()  # Update "requested size" from geometry manager
-		x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (configWindow.winfo_reqwidth() // 2)
-		y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (configWindow.winfo_reqheight() // 2)
+		self.root.update_idletasks()
+		x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (configWindow.sizeX // 2)
+		y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (configWindow.sizeY // 2)
 		configWindow.geometry(f"+{x}+{y}")
 
 		debugVar = tk.BooleanVar(value=self.config.get('debug', False))
@@ -335,63 +599,110 @@ class DCSAutoMateApp:
 		dcsWindowTitleOverrideVar = tk.StringVar(value=self.config.get('dcsWindowTitleOverride', ''))
 		dcsSavedGamesOverrideVar = tk.StringVar(value=self.config.get('dcsSavedGamesOverride', ''))
 		dcsExePathOverrideVar = tk.StringVar(value=self.config.get('dcsExePathOverride', ''))
+		darkModeVar = tk.BooleanVar(value=self.config.get('darkMode', False))
 
-		padding = {'padx': 10, 'pady': 5}
+		# Config header
+		cfgHeader = tk.Frame(configWindow, height=40)
+		cfgHeader.pack(fill='x')
+		cfgHeader.pack_propagate(False)
+		tk.Label(cfgHeader, text='  CONFIGURATION', font=('Consolas', 12, 'bold'),
+			bg=theme['header_bg'], fg=theme['header_fg']).pack(fill='both', expand=True, anchor='w')
+		tk.Frame(configWindow, height=2, bg=theme['accent']).pack(fill='x')
 
-		tk.Checkbutton(configWindow, text='Debug - Disables sending data to DCS', variable=debugVar).pack(anchor='w', **padding)
+		# Content area
+		contentArea = tk.Frame(configWindow)
+		contentArea.pack(fill='both', expand=True, padx=15, pady=10)
 
-		tk.Checkbutton(configWindow, text='Disable Text-to-Speech output', variable=disableSpeechVar).pack(anchor='w', **padding)
+		padding = {'padx': 5, 'pady': 4}
+		labelFont = ('Consolas', 9)
 
-		tk.Checkbutton(configWindow, text='Find DCS window by window title (otherwise use exe path)', variable=dcsWindowUseTitleVar).pack(anchor='w', **padding)
+		# General section
+		genPanel = tk.LabelFrame(contentArea, text=' GENERAL ', font=('Consolas', 9, 'bold'), padx=10, pady=6)
+		genPanel.pack(fill='x', pady=(0, 8))
 
-		tk.Label(configWindow, text="DCS executable path:\n(Leave blank to get the location from the registry)", anchor='w', justify='left').pack(anchor='w', **padding)
-		dcsExePathOverrideEntry = tk.Entry(configWindow, textvariable=dcsExePathOverrideVar)
-		dcsExePathOverrideEntry.pack(fill='x', **padding)
-		tk.Button(configWindow, text='Browse', command=lambda: dcsExePathOverrideVar.set(filedialog.askopenfilename(filetypes=[("Executable files", "*.exe")]))).pack(anchor='e', **padding)
+		tk.Checkbutton(genPanel, text='Debug - Disables sending data to DCS', variable=debugVar, font=labelFont).pack(anchor='w', **padding)
+		tk.Checkbutton(genPanel, text='Disable Text-to-Speech output', variable=disableSpeechVar, font=labelFont).pack(anchor='w', **padding)
+		tk.Checkbutton(genPanel, text='Dark Mode', variable=darkModeVar, font=labelFont).pack(anchor='w', **padding)
 
-		tk.Label(configWindow, text='DCS window title to send commands to:\n(Leave blank to use default "Digital Combat Simulator"', anchor='w', justify='left').pack(anchor='w', **padding)
-		dcsWindowTitleOverrideEntry = tk.Entry(configWindow, textvariable=dcsWindowTitleOverrideVar)
-		dcsWindowTitleOverrideEntry.pack(fill='x', **padding)
+		# DCS Window section
+		dcsPanel = tk.LabelFrame(contentArea, text=' DCS WINDOW ', font=('Consolas', 9, 'bold'), padx=10, pady=6)
+		dcsPanel.pack(fill='x', pady=(0, 8))
 
-		tk.Label(configWindow, text="DCS Saved Games folder path:\n(if blank, defaults to '%USERPROFILE%\\Saved Games\\DCS' or 'DCS.openbeta')", anchor='w', justify='left').pack(anchor='w', **padding)
-		dcsSavedGamesOverrideEntry = tk.Entry(configWindow, textvariable=dcsSavedGamesOverrideVar)
-		dcsSavedGamesOverrideEntry.pack(fill='x', **padding)
-		tk.Button(configWindow, text='Browse', command=lambda: dcsSavedGamesOverrideVar.set(filedialog.askdirectory())).pack(anchor='e', **padding)
+		tk.Checkbutton(dcsPanel, text='Find DCS window by window title (otherwise use exe path)', variable=dcsWindowUseTitleVar, font=labelFont).pack(anchor='w', **padding)
 
+		tk.Label(dcsPanel, text='DCS executable path (blank = auto-detect from registry):', font=labelFont, anchor='w').pack(fill='x', **padding)
+		exeFrame = tk.Frame(dcsPanel)
+		exeFrame.pack(fill='x', **padding)
+		tk.Entry(exeFrame, textvariable=dcsExePathOverrideVar, font=labelFont).pack(side='left', fill='x', expand=True, padx=(0, 5))
+		tk.Button(exeFrame, text='Browse', font=labelFont, command=lambda: dcsExePathOverrideVar.set(filedialog.askopenfilename(filetypes=[("Executable files", "*.exe")]))).pack(side='right')
+
+		tk.Label(dcsPanel, text='DCS window title (blank = "Digital Combat Simulator"):', font=labelFont, anchor='w').pack(fill='x', **padding)
+		tk.Entry(dcsPanel, textvariable=dcsWindowTitleOverrideVar, font=labelFont).pack(fill='x', **padding)
+
+		# Paths section
+		pathPanel = tk.LabelFrame(contentArea, text=' PATHS ', font=('Consolas', 9, 'bold'), padx=10, pady=6)
+		pathPanel.pack(fill='x', pady=(0, 8))
+
+		tk.Label(pathPanel, text='DCS Saved Games folder (blank = auto-detect):', font=labelFont, anchor='w').pack(fill='x', **padding)
+		sgFrame = tk.Frame(pathPanel)
+		sgFrame.pack(fill='x', **padding)
+		tk.Entry(sgFrame, textvariable=dcsSavedGamesOverrideVar, font=labelFont).pack(side='left', fill='x', expand=True, padx=(0, 5))
+		tk.Button(sgFrame, text='Browse', font=labelFont, command=lambda: dcsSavedGamesOverrideVar.set(filedialog.askdirectory())).pack(side='right')
+
+		# Action buttons
 		buttonFrame = tk.Frame(configWindow)
 		buttonFrame.pack(pady=10)
-		tk.Button(buttonFrame, text='Save', command=lambda: self.saveConfig(
-			debugVar,
-			disableSpeechVar,
-			dcsWindowUseTitleVar,
-			dcsExePathOverrideVar,
-			dcsWindowTitleOverrideVar,
-			dcsSavedGamesOverrideVar,
-			configWindow
-		)).pack(side='left', padx=5, pady=5, ipadx=10, ipady=5)
-		tk.Button(buttonFrame, text='Cancel', command=configWindow.destroy).pack(side='left', padx=5, pady=5, ipadx=10, ipady=5)
+		saveBtn = tk.Button(buttonFrame, text='SAVE', command=lambda: self.saveConfig(
+			debugVar, disableSpeechVar, dcsWindowUseTitleVar, dcsExePathOverrideVar,
+			dcsWindowTitleOverrideVar, dcsSavedGamesOverrideVar, darkModeVar, configWindow),
+			font=('Consolas', 10, 'bold'), relief='flat', width=12)
+		saveBtn.pack(side='left', padx=5, ipady=4)
+		cancelBtn = tk.Button(buttonFrame, text='CANCEL', command=configWindow.destroy,
+			font=('Consolas', 10, 'bold'), relief='flat', width=12)
+		cancelBtn.pack(side='left', padx=5, ipady=4)
+
+		# Apply theme to the config window
+		self._applyThemeToWidget(configWindow, theme)
+		# Special button styling
+		saveBtn.config(bg=theme['accent'], fg=theme['accent_fg'],
+			activebackground=theme['button_hover'], activeforeground=theme['accent_fg'])
+		cancelBtn.config(bg=theme['button_bg'], fg=theme['button_fg'],
+			activebackground=theme['button_hover'], activeforeground=theme['button_fg'])
 
 		# Make the window modal
 		configWindow.grab_set()
 		self.root.wait_window(configWindow)
 
-	def saveConfig(self, debugVar, disableSpeechVar, dcsWindowUseTitleVar, dcsExePathOverrideVar, dcsWindowTitleOverrideVar, dcsSavedGamesOverrideVar, configWindow):
+	def saveConfig(self, debugVar, disableSpeechVar, dcsWindowUseTitleVar, dcsExePathOverrideVar, dcsWindowTitleOverrideVar, dcsSavedGamesOverrideVar, darkModeVar, configWindow):
 		self.config['debug'] = debugVar.get()
 		self.config['disableSpeech'] = disableSpeechVar.get()
 		self.config['dcsWindowUseTitle'] = dcsWindowUseTitleVar.get()
 		self.config['dcsExePathOverride'] = dcsExePathOverrideVar.get()
 		self.config['dcsWindowTitleOverride'] = dcsWindowTitleOverrideVar.get()
 		self.config['dcsSavedGamesOverride'] = dcsSavedGamesOverrideVar.get()
+		self.config['darkMode'] = darkModeVar.get()
 
 		with open('DCSAutoMateConfig.json', 'w') as file:
 			file.write(json.dumps(self.config, indent=4))
+
+		# Update the dark mode toggle and apply theme
+		self.darkModeVar.set(darkModeVar.get())
+		self.applyTheme()
+
 		configWindow.destroy()
 
 	def updateUIState(self):
+		theme = self.getTheme()
 		moduleSelected = bool(self.moduleDropdown.get())
 		scriptSelected = bool(self.scriptDropdown.get())
-		self.startButton.config(state='normal' if moduleSelected and scriptSelected else 'disabled')
+		canStart = moduleSelected and scriptSelected
+		self.startButton.config(state='normal' if canStart else 'disabled')
 		self.stopButton.config(state='disabled')
+		# Update button colors based on state
+		if canStart:
+			self.startButton.config(bg=theme['accent'], fg=theme['accent_fg'])
+		else:
+			self.startButton.config(bg=theme['button_disabled_bg'], fg=theme['button_disabled_fg'])
 
 	def getDefaultConfig(self):
 		return {
@@ -401,6 +712,7 @@ class DCSAutoMateApp:
 			'dcsExePathOverride': '',
 			'dcsWindowTitleOverride': '',
 			'dcsSavedGamesOverride': '',
+			'darkMode': False,
 		}
 
 	def loadConfigFile(self):
@@ -453,7 +765,7 @@ class DCSAutoMateApp:
 		parser.add_argument(
 			'--dcsSavedGamesOverride',
 			action = 'store',
-			help = "If passed, specifies the full path to the DCS Saved Games folder.  Defaults to trying first %USERPROFILE%\\Saved Games\\DCS and then %USERPROFILE%\\Saved Games\\DCS.openbeta."
+			help = "If passed, specifies the full path to the DCS Saved Games folder.  Defaults to trying first %%USERPROFILE%%\\Saved Games\\DCS and then %%USERPROFILE%%\\Saved Games\\DCS.openbeta."
 		)
 
 		args = parser.parse_args()

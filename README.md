@@ -1,7 +1,7 @@
 # DCSAutoMate
 Python scripting engine for DCS World using DCS BIOS.
 
-> **Fork notice — Arcanum115**
+> **Fork notice — [Arcanum115](https://github.com/Arcanum115)**
 >
 > This fork adds full **Cold Start**, **Shutdown**, and an **Engine Switch Click**
 > debug helper for the Anubis Productions **C-130J-30** module. The C-130J
@@ -15,7 +15,7 @@ Python scripting engine for DCS World using DCS BIOS.
 >
 > **AI-assisted disclaimer:** the C-130J Python script and parts of this
 > README were developed with assistance from Anthropic's Claude AI. All code
-> was hand-verified and tested in DCS by Arcanum115 before being committed.
+> was hand-verified and tested in DCS by [Arcanum115](https://github.com/Arcanum115) before being committed.
 
 # Features
 

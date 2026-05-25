@@ -1,1 +1,5 @@
-2026-05-22 12:55:43 - DCSAutoMate.py:114 - Starting DCSAutoMate...
+2026-05-25 13:48:48 - DCSAutoMate.py:114 - Starting DCSAutoMate...
+2026-05-25 13:48:59 - DCSAutoMate.py:933 - Using default DCS exe path
+2026-05-25 13:48:59 - DCSAutoMate.py:998 - Found DCS window with Process Path: G:\DCS\DCS World\bin-mt\DCS.exe
+2026-05-25 13:48:59 - DCSAutoMate.py:1000 - DCS UAC elevation: nonelevated
+2026-05-25 13:48:59 - DCSAutoMate.py:1002 - DCSAutoMate UAC elevation: nonelevated

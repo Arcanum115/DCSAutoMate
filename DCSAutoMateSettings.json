@@ -31,7 +31,7 @@
             "module": "F-15E",
             "script": "Cold Start",
             "vars": {
-                "Time": "Day",
+                "Time": "Night",
                 "External Power": "No",
                 "Alignment": "Stored Heading"
             }
@@ -118,8 +118,9 @@
             "module": "C-130J",
             "script": "Shutdown",
             "vars": {
-                "Time": "Night",
-                "External Power": "No"
+                "Time": "Day",
+                "External Power": "No",
+                "Alignment": "Stored Heading"
             }
         },
         {
@@ -155,6 +156,13 @@
             "vars": {
                 "Time": "Night",
                 "External Power": "No"
+            }
+        },
+        {
+            "module": "C-130J",
+            "script": "Test: Master Warning Press (all combos)",
+            "vars": {
+                "Side": "Pilot"
             }
         }
     ]

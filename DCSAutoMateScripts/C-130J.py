@@ -44,6 +44,13 @@ def getScriptData():
 					'Direction': ['1', '0'],
 				},
 			},
+			{
+				'name': 'Test: Master Warning Press (all combos)',
+				'function': 'TestMasterWarning',
+				'vars': {
+					'Side': ['Pilot', 'Copilot'],
+				},
+			},
 		],
 	}
 
@@ -93,6 +100,27 @@ def ColdStart(config, vars):
 			for key in kwargs:
 				step[key] = kwargs[key]
 			seq.append(step)
+
+	def mc_mw_silence(num_cycles, label='silence', interval=0.02):
+		"""
+		Emit `num_cycles` instant press+release pairs on Pilot Master Caution
+		and Pilot Master Warning, back-to-back with no inter-cycle delay.
+
+		Each cycle is (all timings are instant 0.02s rapid-fire):
+		  +interval s : MC press (value 1)   — instant after previous cycle
+		  +0.02 s     : MC release (value 0)
+		  +0.02 s     : MW press (value 1)
+		  +0.02 s     : MW release (value 0)
+
+		One full cycle takes ~0.08s, so `num_cycles=12` fires in ~1 second.
+		Called at every cold-start phase boundary so the alarms get hammered
+		whenever the script reaches a transition point.
+		"""
+		for i in range(1, num_cycles + 1):
+			pushSeqCmd(interval, 'PLT_MASTER_CAUTION', 1, f'MC {label} cycle {i}/{num_cycles}')
+			pushSeqCmd(0.02,     'PLT_MASTER_CAUTION', 0)
+			pushSeqCmd(0.02,     'PLT_MASTER_WARNING', 1, f'MW {label} cycle {i}/{num_cycles}')
+			pushSeqCmd(0.02,     'PLT_MASTER_WARNING', 0)
 
 	pushSeqCmd(0, '', '', "C-130J Cold Start (in-game checklist order)")
 	pushSeqCmd(dt, 'scriptSpeech', 'Starting checklist.')
@@ -194,7 +222,11 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'ATCS_GUARD', 1)
 	pushSeqCmd(dt, 'ATCS', 1, 'ATCS - ON')
 	pushSeqCmd(dt, 'ATCS_GUARD', 0)
-	pushSeqCmd(dt, 'PROP_SYNC', 1, 'Prop sync - ON')
+	# NOTE: PROP_SYNC is intentionally NOT engaged here. The system rejects
+	# engagement attempts when engines aren't running at a stable RPM, so
+	# the engagement is deferred to the absolute end of the script (after
+	# AUTONAV / MSTR AV ON) when all four engines are fully spooled and
+	# stable.
 
 	# FIRE/ENGINE START panel - engines initial position
 	# Engine start switches behave as RELATIVE CLICKS, not absolute positions:
@@ -284,14 +316,23 @@ def ColdStart(config, vars):
 	#   1) Drive switch to START (value 2)
 	#   2) Hold ~2s for the start sequence to engage
 	#   3) Release to RUN (value 1)
-	#   4) Wait on APU_NG telemetry until it reaches operating RPM
+	#   4) Silence the master caution alarm every 10 seconds while the APU
+	#      spools up (the alarm re-triggers on each ACAWS condition during
+	#      APU start)
+	#   5) Final telemetry check that APU_NG actually reached 100%
 	pushSeqCmd(dt, 'APU_SWITCH', 2, 'APU switch - START')
 	pushSeqCmd(2.0, 'APU_SWITCH', 1, 'APU switch - RUN (release from spring)')
 
-	# Wait for APU to reach full operating RPM (100%)
+	# Periodic MC + MW silence while APU spools (~60s coverage).
+	mc_mw_silence(12, label='APU spool')
+
+	# Final guard — if APU is already at 100% (which it should be after the
+	# 60s of MC silencing above), this passes immediately. If for some reason
+	# the APU spool is slow, this will wait until it gets there.
 	pushSeqCmd(dt, 'scriptCockpitState',
 		control='C-130J/APU_NG', value=100, condition='>=', duration=2)
 	pushSeqCmd(dt, 'scriptSpeech', 'A P U at 100 percent.')
+
 	# MC clear after APU online
 	pushSeqCmd(dt, 'PLT_MASTER_CAUTION', 1, 'MC clear after APU')
 	pushSeqCmd(0.5, 'PLT_MASTER_CAUTION', 0)
@@ -302,19 +343,17 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'BLEED_APU', 1, 'APU bleed air - OPEN')
 	pushSeqCmd(dt, 'scriptSpeech', 'Waiting for bleed air pressure.')
 
-	# Wait for bleed pressure to reach 40 PSI
+	# Wait for bleed pressure to reach 30 PSI
 	pushSeqCmd(dt, 'scriptCockpitState',
-		control='C-130J/BLEED_AIR_PRESSURE', value=40, condition='>=', duration=2)
+		control='C-130J/BLEED_AIR_PRESSURE', value=30, condition='>=', duration=2)
 	pushSeqCmd(dt, 'scriptSpeech', 'Bleed air pressure stable.')
 
 	# APU switch - click left one detent (value 0) to settle in RUN.
 	pushSeqCmd(dt, 'APU_SWITCH', 0, 'APU switch - click left to RUN')
 
-	# MC clear after bleed stable
-	pushSeqCmd(dt, 'PLT_MASTER_CAUTION', 1, 'MC clear after bleed')
-	pushSeqCmd(0.5, 'PLT_MASTER_CAUTION', 0)
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 1, 'MW clear after bleed')
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 0)
+	# MC + MW silence cycles after bleed stable (~15s coverage through
+	# A/C panel + ECB prep).
+	mc_mw_silence(3, label='after bleed')
 
 	# --- AIR COND panel - Set (as required) ---
 	pushSeqCmd(dt, 'AC_FLT_PWR', 1, 'Flt Station A/C - ON')
@@ -359,11 +398,9 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'CNBP_BTN_R1', 1, 'CNBP LSK R1 - Confirm')
 	pushSeqCmd(0.2, 'CNBP_BTN_R1', 0)
 	pushSeqCmd(dt, 'scriptSpeech', 'E C Bs reset complete.')
-	# MC clear after ECB reset
-	pushSeqCmd(dt, 'PLT_MASTER_CAUTION', 1, 'MC clear after ECB reset')
-	pushSeqCmd(0.5, 'PLT_MASTER_CAUTION', 0)
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 1, 'MW clear after ECB reset')
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 0)
+	# MC + MW silence cycles after ECB reset (~15s coverage through
+	# alignment timer + BEFORE STARTING ENGINES).
+	mc_mw_silence(3, label='after ECB')
 
 	# --- Elevator trim power to NORM (after power application) ---
 	pushSeqCmd(dt, 'TRIM_ELEV_TAB_PWR', 2, 'Elev trim power - NORM')
@@ -439,15 +476,8 @@ def ColdStart(config, vars):
 
 	pushSeqCmd(dt, 'scriptSpeech', 'Engines at start. Holding 30 seconds for spool up.')
 
-	# Press master caution periodically during the 30s hold
-	pushSeqCmd(15.0, 'PLT_MASTER_CAUTION', 1, 'MC clear at 15s of hold')
-	pushSeqCmd(0.5, 'PLT_MASTER_CAUTION', 0)
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 1, 'MW clear at 15s of hold')
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 0)
-	pushSeqCmd(14.5, 'PLT_MASTER_CAUTION', 1, 'MC clear at 30s of hold')
-	pushSeqCmd(0.5, 'PLT_MASTER_CAUTION', 0)
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 1, 'MW clear at 30s of hold')
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 0)
+	# MC + MW silence cycles for the entire 30s hold (~30s coverage).
+	mc_mw_silence(6, label='engine spool')
 
 	# After 30s at START, click each engine one detent left back to RUN
 	pushSeqCmd(dt, 'scriptSpeech', 'Releasing engine switches to run.')
@@ -456,11 +486,8 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'ENG_3_START_SWITCH', 0, 'Engine 3 - click left to RUN')
 	pushSeqCmd(dt, 'ENG_4_START_SWITCH', 0, 'Engine 4 - click left to RUN')
 
-	# Master caution clear after engines settled
-	pushSeqCmd(dt, 'PLT_MASTER_CAUTION', 1, 'MC clear after engines at RUN')
-	pushSeqCmd(0.5, 'PLT_MASTER_CAUTION', 0)
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 1, 'MW clear after engines at RUN')
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 0)
+	# MC + MW silence cycles after engines at RUN (~15s coverage).
+	mc_mw_silence(3, label='engines at RUN')
 
 	# --- Post-engine-start: CNBP LSK L1 ---
 	pushSeqCmd(dt, 'scriptSpeech', 'Engines running.')
@@ -485,11 +512,8 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_3', 1)
 	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_4', 1)
 
-	# Periodic MC + MW press (press + release for both)
-	pushSeqCmd(dt, 'PLT_MASTER_CAUTION', 1, 'MC periodic press')
-	pushSeqCmd(0.3, 'PLT_MASTER_CAUTION', 0)
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 1, 'MW periodic press')
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 0)
+	# MC + MW silence cycles before BEFORE TAXI (~15s coverage).
+	mc_mw_silence(3, label='before BEFORE TAXI')
 
 	# ===========================================================================
 	# CHECKLIST: BEFORE TAXI
@@ -513,11 +537,8 @@ def ColdStart(config, vars):
 	# Wait for alignment if not done yet
 	pushSeqCmd(dt, 'scriptTimerEnd', name='align')
 
-	# Periodic MC + MW press
-	pushSeqCmd(dt, 'PLT_MASTER_CAUTION', 1, 'MC periodic press')
-	pushSeqCmd(0.3, 'PLT_MASTER_CAUTION', 0)
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 1, 'MW periodic press')
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 0)
+	# MC + MW silence cycles during BEFORE TAXI (~10s coverage).
+	mc_mw_silence(2, label='BEFORE TAXI')
 
 
 	# ===========================================================================
@@ -532,11 +553,10 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'CC_FLAP_LEVER', int16(0.50), 'Flaps - 50%')
 
 
-	# Periodic MC + MW press
-	pushSeqCmd(dt, 'PLT_MASTER_CAUTION', 1, 'MC periodic press')
-	pushSeqCmd(0.3, 'PLT_MASTER_CAUTION', 0)
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 1, 'MW periodic press')
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 0)
+	# MC + MW silence cycles before BEFORE TAKEOFF (~30s coverage —
+	# BEFORE TAKEOFF is the longest single phase: CNI defensive setup,
+	# HUD config, ARC-210, standby ADI alignment, ATCS reassert).
+	mc_mw_silence(6, label='before BEFORE TAKEOFF')
 
 	# ===========================================================================
 	# CHECKLIST: BEFORE TAKEOFF
@@ -589,33 +609,49 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'PLT_CNI_MC_INDX', 1, 'PLT CNI - to MSN CMPTR INDEX')
 	pushSeqCmd(dt, 'PLT_CNI_LSK_R1',  1, 'MSN CMPTR INDEX R1 - DEF SYS>')
 
-	# DEF SYS CTRL: power on MSTR/MWS/IRCM.
-	# MWS (missile warning) and IRCM (IR countermeasures) drive the threat
-	# audio tones; without them the CMDS audio warnings are silent on cold
-	# start (they default on with a hot start).
-	pushSeqCmd(dt,  'PLT_CNI_LSK_L1', 1, 'DEF SYS L1 - MSTR PWR ON')
+	# DEF SYS CTRL: press MSTR PWR (L1) — this is a cascading master that
+	# powers MWS, IRCM and the rest of the defensive systems automatically.
+	# Do NOT press L4 (MWS PWR) or L5 (IRCM PWR) afterwards — they're already
+	# ON once MSTR PWR is engaged, and pressing them would toggle them back
+	# OFF, which is what causes the "CMDS audio tones silent on cold start"
+	# bug we previously hit.
+	#
+	# IMPORTANT: every LSK press in this block uses an explicit press
+	# (value 1) + release (value 0) pair. Without releases, the CNI sometimes
+	# treats two back-to-back presses on the same key as a single held
+	# button and drops the second one.
+	pushSeqCmd(dt,  'PLT_CNI_LSK_L1', 1, 'DEF SYS L1 - MSTR PWR ON (cascades to MWS + IRCM)')
 	pushSeqCmd(0.3, 'PLT_CNI_LSK_L1', 0)
-	pushSeqCmd(0.5, 'PLT_CNI_LSK_L4', 1, 'DEF SYS L4 - MWS PWR ON')
-	pushSeqCmd(0.3, 'PLT_CNI_LSK_L4', 0)
-	pushSeqCmd(0.5, 'PLT_CNI_LSK_L5', 1, 'DEF SYS L5 - IRCM PWR ON')
-	pushSeqCmd(0.3, 'PLT_CNI_LSK_L5', 0)
+	# Let MSTR PWR settle so the cascade lands on MWS / IRCM / CMDS before
+	# we navigate to the sub-pages.
+	pushSeqCmd(1.0, '', '', 'Wait for MSTR PWR cascade')
 
 	# CMDS sub-page (L3 from DEF SYS CTRL): arm OTHER1/OTHER2 and toggle JMR INTF ON.
 	# Defaults are OTHER1/2 SAFE + JMR INTF OFF, so a single press flips each.
 	pushSeqCmd(0.5, 'PLT_CNI_LSK_L3', 1, 'DEF SYS L3 - to CMDS page')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_L3', 0)
 	pushSeqCmd(0.5, 'PLT_CNI_LSK_L3', 1, 'CMDS L3 - OTHER1 ARM')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_L3', 0)
 	pushSeqCmd(0.5, 'PLT_CNI_LSK_L4', 1, 'CMDS L4 - OTHER2 ARM')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_L4', 0)
 	pushSeqCmd(0.5, 'PLT_CNI_LSK_L5', 1, 'CMDS L5 - JMR INTF ON')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_L5', 0)
 	pushSeqCmd(0.5, 'PLT_CNI_LSK_L6', 1, 'CMDS L6 - back to DEF SYS CTRL')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_L6', 0)
 
 	# RWR sub-page (L2 from DEF SYS CTRL): toggle SHOW UNK on.
 	pushSeqCmd(0.5, 'PLT_CNI_LSK_L2', 1, 'DEF SYS L2 - to RWR page')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_L2', 0)
 	pushSeqCmd(0.5, 'PLT_CNI_LSK_R2', 1, 'RWR R2 - SHOW UNK toggle')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_R2', 0)
 	pushSeqCmd(0.5, 'PLT_CNI_LSK_L6', 1, 'RWR L6 - back to DEF SYS CTRL')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_L6', 0)
 
 	# Step back out twice (DEF SYS CTRL -> MSN CMPTR INDEX -> top)
-	pushSeqCmd(dt, 'PLT_CNI_MC_INDX', 1, 'PLT CNI MC INDX - back (1/2)')
-	pushSeqCmd(dt, 'PLT_CNI_MC_INDX', 1, 'PLT CNI MC INDX - back (2/2)')
+	pushSeqCmd(dt,  'PLT_CNI_MC_INDX', 1, 'PLT CNI MC INDX - back (1/2)')
+	pushSeqCmd(0.3, 'PLT_CNI_MC_INDX', 0)
+	pushSeqCmd(dt,  'PLT_CNI_MC_INDX', 1, 'PLT CNI MC INDX - back (2/2)')
+	pushSeqCmd(0.3, 'PLT_CNI_MC_INDX', 0)
 
 	# Defensive systems master OPR for takeoff (clears CMDS FAIL warning)
 	# DSP_DEFENSIVE_MASTER_SWITCH/ECM/IRCM positions: 0=STBY, 1=OPR
@@ -629,11 +665,9 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'DSP_RWR_TGT_SEP', 1, 'RWR TGT SEP - press')
 	pushSeqCmd(dt, 'DSP_RWR_SRCH', 1, 'RWR SRCH - press')
 
-	# Periodic MC + MW press
-	pushSeqCmd(dt, 'PLT_MASTER_CAUTION', 1, 'MC periodic press')
-	pushSeqCmd(0.3, 'PLT_MASTER_CAUTION', 0)
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 1, 'MW periodic press')
-	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 0)
+	# MC + MW silence cycles after defensive systems OPR (~15s coverage
+	# through ADP computer drop, HUD config, ARC-210 setup).
+	mc_mw_silence(3, label='post defensive')
 
 	# --- Computer drop switch to AD-MAN/TJ-AUTO (middle position) ---
 	pushSeqCmd(dt, 'ADP_COMP_DROP', 1, 'Computer Drop - AD-MAN/TJ-AUTO')
@@ -644,9 +678,17 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'PLT_HUD_TAC_MODE', 1, 'Pilot HUD TAC mode - press')
 	pushSeqCmd(dt, 'PLT_HUD_NAV_MODE', 1, 'Pilot HUD NAV mode - press')
 
-	# --- NAV lights: bright + steady ---
-	pushSeqCmd(dt, 'EXT_DIM', 1, 'Nav lights brightness - BRIGHT')
-	pushSeqCmd(dt, 'EXT_NAV', 2, 'Nav lights mode - STEADY')
+	# --- Day exterior lighting state ---
+	# Unconditional day settings. The Night-mode block further below will
+	# override these with night-friendly values when Time = Night.
+	#   EXT_MASTER = 1  (up)
+	#   EXT_NAV    = 0  (down)
+	#   EXT_DIM    = 0  (down)
+	#   EXT_LEDGE  = 0  (down)
+	pushSeqCmd(dt, 'EXT_MASTER', 1, 'Exterior master - UP (day)')
+	pushSeqCmd(dt, 'EXT_NAV',    0, 'Nav lights mode - DOWN (day)')
+	pushSeqCmd(dt, 'EXT_DIM',    0, 'Nav lights brightness - DOWN (day)')
+	pushSeqCmd(dt, 'EXT_LEDGE',  0, 'Leading edge - DOWN (day)')
 
 	# --- ARC-210: TR+G + SQL on ---
 	pushSeqCmd(dt, 'scriptSpeech', 'Configuring A R C 2 1 0.')
@@ -720,19 +762,11 @@ def ColdStart(config, vars):
 	# Prop sync is asserted at the very end, after FADEC guards close.
 	pushSeqCmd(dt, 'PLT_HUD_BRT_AUTO', 1, 'Pilot HUD brightness - pull for AUTO')
 
-	# --- LSGI (Low Speed Ground Idle) select switches - press + release ---
-	# Each switch is a momentary button: press (value 1) then release (value 0).
-	# Engines 1 and 2 get a longer pre-press delay (~1.5s) - their FADECs occasionally
-	# refuse the LSGI input if pressed back-to-back; the spacing makes it reliable.
-	pushSeqCmd(dt, 'scriptSpeech', 'Setting low ground idle.')
-	pushSeqCmd(1.5,  'CC_LSGI_ENGINE_1_SWITCH', 1, 'Engine 1 LSGI - press')
-	pushSeqCmd(0.5,  'CC_LSGI_ENGINE_1_SWITCH', 0, 'Engine 1 LSGI - release')
-	pushSeqCmd(1.5,  'CC_LSGI_ENGINE_2_SWITCH', 1, 'Engine 2 LSGI - press')
-	pushSeqCmd(0.5,  'CC_LSGI_ENGINE_2_SWITCH', 0, 'Engine 2 LSGI - release')
-	pushSeqCmd(0.5,  'CC_LSGI_ENGINE_3_SWITCH', 1, 'Engine 3 LSGI - press')
-	pushSeqCmd(0.3,  'CC_LSGI_ENGINE_3_SWITCH', 0, 'Engine 3 LSGI - release')
-	pushSeqCmd(0.5,  'CC_LSGI_ENGINE_4_SWITCH', 1, 'Engine 4 LSGI - press')
-	pushSeqCmd(0.3,  'CC_LSGI_ENGINE_4_SWITCH', 0, 'Engine 4 LSGI - release')
+	# MC + MW silence cycles before final actions (~15s coverage
+	# through ATCS down, pitot/NESA, FADEC guards).
+	# (LSGI was moved to the very end of the script — see below — so it
+	# fires after AUTONAV / MSTR AV ON when engines are fully stable.)
+	mc_mw_silence(3, label='before final actions')
 
 	# --- FINAL switch positions (DOWN) ---
 	# ATCS down (engines are running, safe to disengage now)
@@ -745,12 +779,12 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'ICE_NESA_CTR',  0, 'NESA center - DOWN')
 	pushSeqCmd(dt, 'ICE_NESA_SIDE', 0, 'NESA side/lower - DOWN')
 	# Engine FADEC switch guards DOWN (closed)
-	pushSeqCmd(dt, 'FADEC_GUARD_1', 0, 'Engine 1 FADEC guard - DOWN')
-	pushSeqCmd(dt, 'FADEC_GUARD_2', 0, 'Engine 2 FADEC guard - DOWN')
-	pushSeqCmd(dt, 'FADEC_GUARD_3', 0, 'Engine 3 FADEC guard - DOWN')
-	pushSeqCmd(dt, 'FADEC_GUARD_4', 0, 'Engine 4 FADEC guard - DOWN')
-	# Prop sync DOWN/ON (very last functional action)
-	pushSeqCmd(dt, 'PROP_SYNC', 1, 'Prop sync - DOWN/ON')
+	pushSeqCmd(dt, 'FADEC_GUARD_1', 1, 'Engine 1 FADEC guard - UP')
+	pushSeqCmd(dt, 'FADEC_GUARD_2', 1, 'Engine 2 FADEC guard - UP')
+	pushSeqCmd(dt, 'FADEC_GUARD_3', 1, 'Engine 3 FADEC guard - UP')
+	pushSeqCmd(dt, 'FADEC_GUARD_4', 1, 'Engine 4 FADEC guard - UP')
+	# (PROP_SYNC engagement is deferred to the very end of the script — after
+	# AUTONAV / MSTR AV ON — so engines are fully spooled and stable.)
 
 	# Final warning suppression: hammer BOTH pilot AND copilot MC and MW buttons
 	# in three spaced-out cycles. The audio tone re-triggers if any warning
@@ -808,6 +842,46 @@ def ColdStart(config, vars):
 	pushSeqCmd(0.3, 'CPLT_CNI_LSK_R4', 1, 'CPLT CNI R4 - MSTR AV ON select')
 	pushSeqCmd(0.3, 'CPLT_CNI_LSK_R4', 0)
 
+	# --- LSGI (Low Speed Ground Idle) select switches - quick press + release ---
+	# LSGI is a quick click — press value 1 then immediately release value 0.
+	# Both events together complete the click cycle and activate LSGI; the
+	# release is what triggers the activation (press alone just visually
+	# depresses the button).
+	#
+	# Placed here as one of the last actions so engines are fully spooled and
+	# stable. Engines 1 and 2 still get a longer pre-press delay (~1.5s) —
+	# their FADECs occasionally refuse the LSGI input if pressed back-to-back.
+	pushSeqCmd(1.0, 'scriptSpeech', 'Setting low ground idle.')
+
+	# Engine 1: 1.5s pre-press, slightly longer hold (0.5s).
+	# The first LSGI click in the sequence seems to need a bit more hold
+	# time than the rest (likely cold-cache / first-click lag). Engines
+	# 2-4 work reliably with a 0.1s quick click.
+	pushSeqCmd(1.5,  'CC_LSGI_ENGINE_1_SWITCH', 1, 'Engine 1 LSGI - press')
+	pushSeqCmd(0.5,  'CC_LSGI_ENGINE_1_SWITCH', 0, 'Engine 1 LSGI - release (activate)')
+
+	# Engine 2: 1.5s pre-press, quick press+release (0.1s)
+	pushSeqCmd(1.5,  'CC_LSGI_ENGINE_2_SWITCH', 1, 'Engine 2 LSGI - press')
+	pushSeqCmd(0.1,  'CC_LSGI_ENGINE_2_SWITCH', 0, 'Engine 2 LSGI - release (activate)')
+
+	# Engine 3: 0.5s pre-press, quick press+release (0.1s)
+	pushSeqCmd(0.5,  'CC_LSGI_ENGINE_3_SWITCH', 1, 'Engine 3 LSGI - press')
+	pushSeqCmd(0.1,  'CC_LSGI_ENGINE_3_SWITCH', 0, 'Engine 3 LSGI - release (activate)')
+
+	# Engine 4: 0.5s pre-press, quick press+release (0.1s)
+	pushSeqCmd(0.5,  'CC_LSGI_ENGINE_4_SWITCH', 1, 'Engine 4 LSGI - press')
+	pushSeqCmd(0.1,  'CC_LSGI_ENGINE_4_SWITCH', 0, 'Engine 4 LSGI - release (activate)')
+
+	# --- Absolute last action: engage Prop Sync ---
+	# By this point all four engines have been running for several minutes
+	# through BEFORE TAXI / TAXI / BEFORE TAKEOFF and are fully spooled and
+	# stable. Earlier attempts to engage prop sync (pre-battery or right
+	# after FADEC guards close) can be silently rejected by the system if
+	# engine state hasn't settled, so the engagement is performed here as
+	# the final functional action of the cold start.
+	pushSeqCmd(1.0, 'scriptSpeech', 'Engaging prop sync.')
+	pushSeqCmd(0.5, 'PROP_SYNC', 0, 'Prop sync - OFF/down')
+
 	pushSeqCmd(0.5, 'scriptSpeech', 'Cold start complete.')
 
 	return seq
@@ -819,7 +893,10 @@ def ColdStart(config, vars):
 def Shutdown(config, vars):
 	seq = []
 	seqTime = 0
-	dt = 0.3
+	# Rapid-fire shutdown — all switches fire near-instantly. Steps that
+	# genuinely need to wait (APU spring release, APU_NG telemetry, etc.)
+	# pass their own explicit time value below.
+	dt = 0.02
 
 	def pushSeqCmd(dt, cmd, *args, **kwargs):
 		nonlocal seq, seqTime
@@ -869,14 +946,12 @@ def Shutdown(config, vars):
 	pushSeqCmd(dt, 'ICE_NESA_CTR', 0)
 	pushSeqCmd(dt, 'ICE_NESA_SIDE', 0)
 
-	# Start APU for electrical transition (spring-loaded - release from START fires start)
-	pushSeqCmd(dt, 'scriptSpeech', 'Starting A P U for electrical transition.')
-	pushSeqCmd(dt, 'APU_SWITCH', 2, 'APU - START')
-	pushSeqCmd(2.0, 'APU_SWITCH', 1, 'APU - RUN (release from spring)')
-	pushSeqCmd(dt, 'scriptCockpitState',
-		control='C-130J/APU_NG', value=100, condition='>=', duration=2)
-	pushSeqCmd(dt, 'ELECTRICAL_EXT_POWER_APU', 2, 'EXT PWR/APU - APU')
-	pushSeqCmd(dt, 'BLEED_APU', 1, 'APU bleed - OPEN')
+	# APU stays OFF during shutdown — no electrical transition. Just set the
+	# APU switch to STOP (value 0) and close bleed. Generators drop offline
+	# with the engines; battery carries any residual loads until the final
+	# battery-off press at the end of the sequence.
+	pushSeqCmd(dt, 'APU_SWITCH', 0, 'APU - STOP')
+	pushSeqCmd(dt, 'BLEED_APU', 0, 'APU bleed - CLOSED')
 
 	# Engine shutdown
 	pushSeqCmd(dt, 'scriptSpeech', 'Shutting down engines.')
@@ -890,14 +965,13 @@ def Shutdown(config, vars):
 	pushSeqCmd(dt, 'ATCS_GUARD', 0)
 
 	# Engine start switches are relative-click controls (see ColdStart for full
-	# explanation). Clicking right from RUN steps the detent toward STOP via
-	# the simulator's switch-wrap behaviour.
-	pushSeqCmd(dt, 'ENG_1_START_SWITCH', 1, 'Engine 1 - click toward STOP')
-	pushSeqCmd(dt, 'ENG_2_START_SWITCH', 1, 'Engine 2 - click toward STOP')
-	pushSeqCmd(dt, 'ENG_3_START_SWITCH', 1, 'Engine 3 - click toward STOP')
-	pushSeqCmd(dt, 'ENG_4_START_SWITCH', 1, 'Engine 4 - click toward STOP')
-	pushSeqCmd(20.0, '', '', 'Engines spooling down')
-	pushSeqCmd(dt, 'scriptSpeech', 'Engines stopped.')
+	# explanation). Detent order left-to-right is MOTOR / STOP / RUN / START,
+	# so from RUN we need ONE click LEFT (value 0) to land at STOP.
+	pushSeqCmd(dt, 'ENG_1_START_SWITCH', 0, 'Engine 1 - click LEFT to STOP')
+	pushSeqCmd(dt, 'ENG_2_START_SWITCH', 0, 'Engine 2 - click LEFT to STOP')
+	pushSeqCmd(dt, 'ENG_3_START_SWITCH', 0, 'Engine 3 - click LEFT to STOP')
+	pushSeqCmd(dt, 'ENG_4_START_SWITCH', 0, 'Engine 4 - click LEFT to STOP')
+	pushSeqCmd(dt, 'scriptSpeech', 'Engines commanded to STOP.')
 
 	# Hydraulics OFF
 	pushSeqCmd(dt, 'HYD_ENG_PUMP_1_UTIL', 0)
@@ -931,10 +1005,10 @@ def Shutdown(config, vars):
 	# Anti-skid OFF
 	pushSeqCmd(dt, 'ANTI_SKID', 0)
 
-	# APU shutdown
-	pushSeqCmd(dt, 'BLEED_APU', 0, 'APU bleed - CLOSED')
+	# EXT PWR / APU selector to OFF. (APU switch was already commanded to
+	# STOP and APU bleed already closed at the top of the shutdown — no
+	# APU electrical transition is performed in this fork.)
 	pushSeqCmd(dt, 'ELECTRICAL_EXT_POWER_APU', 1, 'EXT PWR/APU - OFF')
-	pushSeqCmd(dt, 'APU_SWITCH', 0, 'APU - STOP')
 
 	# Lighting off
 	pushSeqCmd(dt, 'PLT_CC_LIGHTING_MASTER_DISPLAY_BRIGHTNESS', 0)
@@ -997,4 +1071,141 @@ def TestEngineSwitches(config, vars):
 	pushSeqCmd(dt, 'ENG_4_START_SWITCH', value, f'Engine 4 - click {direction}')
 
 	pushSeqCmd(dt, 'scriptSpeech', f'Click {direction} sent. Note position.')
+	return seq
+
+
+###############################################################################
+# TEST: Master Warning Press - exhaustive button-interaction sweep.
+#
+# Walks through every combo of pressing / releasing / holding / repeating /
+# arg-value-variations against the chosen side's Master Warning button, with
+# TTS announcements between each phase so the user can watch the cockpit
+# button and identify which combo actually depresses it.
+#
+# Vars:
+#   Side: 'Pilot' or 'Copilot' - which Master Warning button to test.
+#
+# A short cross-check at the end also fires the matching Master Caution
+# button so the user can verify the wiring isn't swapped.
+###############################################################################
+def TestMasterWarning(config, vars):
+	seq = []
+	seqTime = 0
+	dt = 0.3
+
+	def pushSeqCmd(dt, cmd, *args, **kwargs):
+		nonlocal seq, seqTime
+		if len(args):
+			seq.append({
+				'time': round(dt, 2),
+				'cmd': cmd,
+				'arg': args[0],
+				'msg': args[1] if len(args) > 1 else '',
+			})
+		else:
+			step = {
+				'time': round(dt, 2),
+				'cmd': cmd,
+			}
+			for key in kwargs:
+				step[key] = kwargs[key]
+			seq.append(step)
+
+	side = vars.get('Side', 'Pilot')
+	if side == 'Copilot':
+		mw_ctrl = 'CPLT_MASTER_WARNING'
+		mc_ctrl = 'CPLT_MASTER_CAUTION'
+	else:
+		mw_ctrl = 'PLT_MASTER_WARNING'
+		mc_ctrl = 'PLT_MASTER_CAUTION'
+
+	pushSeqCmd(0,    '', '', f'Master Warning interaction sweep - {side} side')
+	pushSeqCmd(dt,   'scriptSpeech',
+		f'Master warning test starting. Side: {side}. Watch the master warning button.')
+	pushSeqCmd(2.0,  '', '', 'Hold before first phase')
+
+	# --- Phase A: single press (value 1), no release ---
+	pushSeqCmd(dt,   'scriptSpeech', 'Phase A. Single press, value one, no release.')
+	pushSeqCmd(2.0,  mw_ctrl, 1, 'A: press (value 1) — no release')
+	pushSeqCmd(3.0,  'scriptSpeech', 'Phase A complete. Note button state.')
+
+	# --- Phase B: single release (value 0) without prior press ---
+	pushSeqCmd(dt,   'scriptSpeech', 'Phase B. Single release, value zero.')
+	pushSeqCmd(2.0,  mw_ctrl, 0, 'B: release (value 0) — no prior press')
+	pushSeqCmd(3.0,  'scriptSpeech', 'Phase B complete. Note button state.')
+
+	# --- Phase C: standard press + release ---
+	pushSeqCmd(dt,   'scriptSpeech', 'Phase C. Press value one, then release value zero.')
+	pushSeqCmd(1.0,  mw_ctrl, 1, 'C: press (value 1)')
+	pushSeqCmd(0.3,  mw_ctrl, 0, 'C: release (value 0)')
+	pushSeqCmd(3.0,  'scriptSpeech', 'Phase C complete.')
+
+	# --- Phase D: press, 1s hold, release ---
+	pushSeqCmd(dt,   'scriptSpeech', 'Phase D. Press, hold one second, release.')
+	pushSeqCmd(1.0,  mw_ctrl, 1, 'D: press (value 1)')
+	pushSeqCmd(1.0,  mw_ctrl, 0, 'D: release after 1s hold')
+	pushSeqCmd(3.0,  'scriptSpeech', 'Phase D complete.')
+
+	# --- Phase E: press, 2s hold, release ---
+	pushSeqCmd(dt,   'scriptSpeech', 'Phase E. Press, hold two seconds, release.')
+	pushSeqCmd(1.0,  mw_ctrl, 1, 'E: press (value 1)')
+	pushSeqCmd(2.0,  mw_ctrl, 0, 'E: release after 2s hold')
+	pushSeqCmd(3.0,  'scriptSpeech', 'Phase E complete.')
+
+	# --- Phase F: three rapid press+release cycles ---
+	pushSeqCmd(dt,   'scriptSpeech', 'Phase F. Three rapid press and release cycles.')
+	for i in range(1, 4):
+		pushSeqCmd(0.6, mw_ctrl, 1, f'F: rapid cycle {i} press')
+		pushSeqCmd(0.2, mw_ctrl, 0, f'F: rapid cycle {i} release')
+	pushSeqCmd(3.0,  'scriptSpeech', 'Phase F complete.')
+
+	# --- Phase G: five presses without releases (repeated press 1) ---
+	pushSeqCmd(dt,   'scriptSpeech', 'Phase G. Five presses without releases.')
+	for i in range(1, 6):
+		pushSeqCmd(0.6, mw_ctrl, 1, f'G: press {i} without release')
+	pushSeqCmd(1.0,  mw_ctrl, 0, 'G: final release to clear state')
+	pushSeqCmd(3.0,  'scriptSpeech', 'Phase G complete.')
+
+	# --- Phase H: double-click (press release press release) ---
+	pushSeqCmd(dt,   'scriptSpeech', 'Phase H. Double click.')
+	pushSeqCmd(1.0,  mw_ctrl, 1, 'H: first press')
+	pushSeqCmd(0.1,  mw_ctrl, 0, 'H: first release')
+	pushSeqCmd(0.1,  mw_ctrl, 1, 'H: second press')
+	pushSeqCmd(0.3,  mw_ctrl, 0, 'H: second release')
+	pushSeqCmd(3.0,  'scriptSpeech', 'Phase H complete.')
+
+	# --- Phase I: unusual argument values (2, then -1) ---
+	pushSeqCmd(dt,   'scriptSpeech', 'Phase I. Unusual argument values: two, then negative one.')
+	pushSeqCmd(1.0,  mw_ctrl, 2, 'I: send value 2 (unusual)')
+	pushSeqCmd(2.0,  mw_ctrl, 0, 'I: release (value 0)')
+	pushSeqCmd(1.0,  mw_ctrl, -1, 'I: send value -1 (unusual)')
+	pushSeqCmd(2.0,  mw_ctrl, 0, 'I: release (value 0)')
+	pushSeqCmd(3.0,  'scriptSpeech', 'Phase I complete.')
+
+	# --- Phase J: cross-check the OTHER side's Master Warning ---
+	other_side = 'Copilot' if side == 'Pilot' else 'Pilot'
+	other_mw = 'CPLT_MASTER_WARNING' if side == 'Pilot' else 'PLT_MASTER_WARNING'
+	pushSeqCmd(dt,   'scriptSpeech',
+		f'Phase J. Cross check: pressing the {other_side} master warning instead.')
+	pushSeqCmd(1.0,  other_mw, 1, f'J: {other_side} MW press')
+	pushSeqCmd(0.3,  other_mw, 0, f'J: {other_side} MW release')
+	pushSeqCmd(3.0,  'scriptSpeech', 'Phase J complete.')
+
+	# --- Phase K: cross-check Master Caution on the same side ---
+	pushSeqCmd(dt,   'scriptSpeech',
+		f'Phase K. Cross check: pressing the {side} master caution instead.')
+	pushSeqCmd(1.0,  mc_ctrl, 1, f'K: {side} MC press')
+	pushSeqCmd(0.3,  mc_ctrl, 0, f'K: {side} MC release')
+	pushSeqCmd(3.0,  'scriptSpeech', 'Phase K complete.')
+
+	# --- Phase L: simultaneous press on BOTH sides ---
+	pushSeqCmd(dt,   'scriptSpeech', 'Phase L. Simultaneous pilot and copilot master warning press.')
+	pushSeqCmd(1.0,  'PLT_MASTER_WARNING',  1, 'L: PLT MW press')
+	pushSeqCmd(0.0,  'CPLT_MASTER_WARNING', 1, 'L: CPLT MW press (same instant)')
+	pushSeqCmd(0.3,  'PLT_MASTER_WARNING',  0, 'L: PLT MW release')
+	pushSeqCmd(0.0,  'CPLT_MASTER_WARNING', 0, 'L: CPLT MW release')
+	pushSeqCmd(3.0,  'scriptSpeech', 'Phase L complete.')
+
+	pushSeqCmd(1.0,  'scriptSpeech',
+		'Master warning sweep finished. Report which phase actually depressed the button.')
 	return seq

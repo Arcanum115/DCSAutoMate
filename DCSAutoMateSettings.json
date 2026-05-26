@@ -1,5 +1,5 @@
 {
-    "lastUsedModule": "F-15E",
+    "lastUsedModule": "FA-18C",
     "lastUsedScripts": {
         "A-10C": "Cold Start",
         "F-4E": "Cold Start With Jester",
@@ -40,8 +40,10 @@
             "module": "FA-18C",
             "script": "Cold Start",
             "vars": {
-                "Time": "Night",
-                "Location": "Carrier",
+                "Time": "Day",
+                "External Power": "No",
+                "Alignment": "Stored Heading",
+                "Location": "Ground",
                 "HMD": "No HMD"
             }
         },

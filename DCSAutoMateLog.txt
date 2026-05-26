@@ -3,3 +3,15 @@
 2026-05-25 14:11:19 - DCSAutoMate.py:998 - Found DCS window with Process Path: G:\DCS\DCS World\bin-mt\DCS.exe
 2026-05-25 14:11:19 - DCSAutoMate.py:1000 - DCS UAC elevation: nonelevated
 2026-05-25 14:11:19 - DCSAutoMate.py:1002 - DCSAutoMate UAC elevation: nonelevated
+2026-05-25 18:31:52 - DCSAutoMate.py:933 - Using default DCS exe path
+2026-05-25 18:31:52 - DCSAutoMate.py:998 - Found DCS window with Process Path: G:\DCS\DCS World\bin-mt\DCS.exe
+2026-05-25 18:31:52 - DCSAutoMate.py:1000 - DCS UAC elevation: nonelevated
+2026-05-25 18:31:52 - DCSAutoMate.py:1002 - DCSAutoMate UAC elevation: nonelevated
+2026-05-25 18:49:19 - DCSAutoMate.py:933 - Using default DCS exe path
+2026-05-25 18:49:19 - DCSAutoMate.py:998 - Found DCS window with Process Path: G:\DCS\DCS World\bin-mt\DCS.exe
+2026-05-25 18:49:19 - DCSAutoMate.py:1000 - DCS UAC elevation: nonelevated
+2026-05-25 18:49:19 - DCSAutoMate.py:1002 - DCSAutoMate UAC elevation: nonelevated
+2026-05-25 22:03:20 - DCSAutoMate.py:933 - Using default DCS exe path
+2026-05-25 22:03:20 - DCSAutoMate.py:998 - Found DCS window with Process Path: G:\DCS\DCS World\bin-mt\DCS.exe
+2026-05-25 22:03:20 - DCSAutoMate.py:1000 - DCS UAC elevation: nonelevated
+2026-05-25 22:03:20 - DCSAutoMate.py:1002 - DCSAutoMate UAC elevation: nonelevated

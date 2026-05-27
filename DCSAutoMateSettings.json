@@ -1,9 +1,9 @@
 {
-    "lastUsedModule": "FA-18C",
+    "lastUsedModule": "F-15E",
     "lastUsedScripts": {
         "A-10C": "Cold Start",
         "F-4E": "Cold Start With Jester",
-        "F-15E": "Cold Start",
+        "F-15E": "Shutdown",
         "FA-18C": "Cold Start",
         "F-16C": "Shutdown",
         "A-4E": "Cold Start",
@@ -33,7 +33,9 @@
             "vars": {
                 "Time": "Day",
                 "External Power": "No",
-                "Alignment": "Stored Heading"
+                "Alignment": "Stored Heading",
+                "Location": "Ground",
+                "HMD": "No HMD"
             }
         },
         {
@@ -60,7 +62,10 @@
             "script": "Shutdown",
             "vars": {
                 "Time": "Day",
-                "External Power": "No"
+                "External Power": "No",
+                "Alignment": "Stored Heading",
+                "Location": "Ground",
+                "HMD": "No HMD"
             }
         },
         {

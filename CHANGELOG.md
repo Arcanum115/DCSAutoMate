@@ -10,6 +10,13 @@ Most changes are to `DCSAutoMateScripts/C-130J.py` (loaded from disk at runtime,
 no rebuild needed); runner changes to `DCSAutoMate.py` are bundled into
 `DCSAutoMate.exe` and require `BuildExe.bat` (or running from source).
 
+## [2026-10-03] — Profile list cleanup
+
+- Removed the CARP diagnostic/helper profiles from the dropdown: `CARP Cargo
+  Probe`, `Wind Check`, `Export Dump`, `CARP Payload Entry`. Their functions
+  remain in `C-130J.py` and can be re-listed in `getScriptData()` if needed.
+- Renamed `CARP Test` → `BETA CARP Testing Required`.
+
 ## [2026-10-03] — C-130J CARP airdrop automation
 
 Full Computed Air Release Point (CARP) airdrop setup, end to end: weight &

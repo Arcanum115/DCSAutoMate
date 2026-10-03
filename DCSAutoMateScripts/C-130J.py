@@ -38,7 +38,7 @@ def getScriptData():
 				'vars': {},
 			},
 			{
-				'name': 'CARP Test',
+				'name': 'BETA CARP Testing Required',
 				'function': 'CarpTest',
 				'vars': {
 					# Full CARP flow: PAYLOAD (WT+BAL) -> PI setup -> CARP INIT 2/5
@@ -95,74 +95,11 @@ def getScriptData():
 					'Min Drop Ht ft': ['600', '400', '500', '800', '1000'],
 				},
 			},
-			{
-				# STAGE 1 read-only probe. Manually open CARP INIT page 2/5 on
-				# the pilot CNI (the page showing LOAD / CHUTE / ELEM WT-QTY /
-				# DROP PAYLD), THEN run this. It reads the CNI display text back
-				# so we can see the exact strings + their ordinal positions.
-				'name': 'CARP Cargo Probe',
-				'function': 'CarpProbe',
-				'vars': {
-					# Seconds to wait before reading, so you can be sure the
-					# CARP INIT 2 page is up first.
-					'Delay s': ['3', '5', '10'],
-					# Speak the raw strings aloud too (handy when eyes are on-screen).
-					'Speak': ['No', 'Yes'],
-				},
-			},
-			{
-				# Reads the live export wind (LoGetVectorWindVelocity) at Run time
-				# and reports the computed FROM-direction + speed, so we can check
-				# the vector->wind math against a known mission wind before wiring
-				# it into the CARP. Run on the ground -> surface-layer wind; at
-				# altitude -> that altitude's wind.
-				'name': 'Wind Check',
-				'function': 'WindCheck',
-				'vars': {},
-			},
-			{
-				# Dumps everything DCSAutoMateExport.lua sends (LoGet* data:
-				# position, altitudes, speeds, payload, mech, engine, winds if
-				# enabled). Survey tool to see what's usable for CARP.
-				# Requires DCSAutoMateExport.lua wired into Export.lua + a running
-				# mission. DCSAutoMate.py change -> needs rebuild/run-from-source.
-				'name': 'Export Dump',
-				'function': 'ExportDump',
-				'vars': {
-					'Delay s': ['2', '5', '10'],
-					# Only show keys containing this substring (kept short so the
-					# radio row doesn't overflow the panel).
-					'Filter': ['(all)', 'Wind', 'Route'],
-				},
-			},
-			{
-				# Drives the WT+BAL PAYLOAD entry that the sim requires before a
-				# CARP: the game does NOT hand cargo data to the avionics, the
-				# crew types each bundle's weight + bay station. A DOUBLE SLASH
-				# marks the entry as an airdrop (manual p.324). Defaults are the
-				# vanilla 4x CDS BARRELS @ 882 lb, stations 345/405/465/525.
-				'name': 'CARP Payload Entry',
-				'function': 'CarpPayload',
-				'vars': {
-					'Bundles': ['4', '1', '2', '3', '5', '6'],
-					'Weight lb ea': ['882', '300', '500', '1000', '1200', '1500',
-						'2000', '2200', '2500', '3000', '4000', '5000', '6000',
-						'7000', '8000', '9000', '10000', '11000', '12000', '13000',
-						'14000', '15000', '16000', '17000', '18000', '19000',
-						'20000'],
-					# First fuselage station of bundle 1; the rest step by Spacing.
-					# First Station = the AFTMOST (largest) station; the stick steps
-					# forward (down) from here. Default 1005 = fully aft (the max).
-					'First Station': ['1005', '985', '965', '945', '925', '905',
-						'885', '865', '845', '825', '805', '785', '765', '745',
-						'725', '705', '685', '665', '645', '625', '605', '585',
-						'565', '545', '525', '505', '485', '465', '445', '425',
-						'405', '385', '365', '345'],
-					'Spacing in': ['60', '48', '72', '90', '120'],
-					# Yes = double-slash (airdrop). No = single-slash (normal payload).
-					'Airdrop': ['Yes', 'No'],
-				},
-			},
+			# NOTE: the CARP diagnostic/helper profiles (CARP Cargo Probe,
+			# Wind Check, Export Dump, CARP Payload Entry) were removed from
+			# this dropdown list 2026-10-03; their functions (CarpProbe,
+			# WindCheck, ExportDump, CarpPayload) remain below and can be
+			# re-listed here if needed.
 		],
 	}
 

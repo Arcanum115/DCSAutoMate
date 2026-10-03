@@ -1,6 +1,10 @@
 ---@diagnostic disable: undefined-global
 -- Add the following to \Saved Games\DCS\Scripts\Export.lua
 --dofile(lfs.writedir()..[[Scripts\DCSAutoMateExport.lua]])
+--
+-- NOTE: this version CHAINS LuaExportActivityNextEvent -- it saves and calls any
+-- previously-registered handler (DCS-BIOS, TheWay, ModernF15E) before doing its
+-- own send, so loading this last does not clobber their export hooks.
 
 package.path = package.path .. ";.\\LuaSocket\\?.lua"
 package.cpath = package.cpath .. ";.\\LuaSocket\\?.dll"
@@ -46,11 +50,25 @@ end
 
 local sender = UDPMulticastSender:new("239.255.61.21", 6121)
 
+-- Save any previously-registered handler so we can chain it (good-citizen hook).
+local DAM_PrevActivityNextEvent = LuaExportActivityNextEvent
+local DAM_lastSend = -1
+
 -- DCS Export functions
 
 function LuaExportActivityNextEvent(t)
-	-- -- Example usage: send a test message periodically
-    --sender:sendData("Periodic update from DCS!")
+	-- Our own send cadence (~1 s). Track it separately so chaining a faster
+	-- previous handler doesn't make us spam.
+	local ourNext = t + 1
+
+	-- Chain the previously-registered handler first, respecting its schedule.
+	local nextT = ourNext
+	if DAM_PrevActivityNextEvent then
+		local ok, prevNext = pcall(DAM_PrevActivityNextEvent, t)
+		if ok and type(prevNext) == "number" then
+			nextT = math.min(nextT, prevNext)
+		end
+	end
 
 	local function tableToString(tbl, prefix)
 		prefix = prefix or ""
@@ -66,142 +84,90 @@ function LuaExportActivityNextEvent(t)
 		return str
 	end
 
-	-- local allDcsData = {
-	-- 	--Object
-	-- 	--Allows for all objects to be accessible. For example this is how tacview knows and returns where every single object in the game is at.
-	-- 	--LoGetObjectById = LoGetObjectById(),
-	-- 	LoGetWorldObjects = LoGetWorldObjects(),
+	-- Only build+send at our ~1 Hz cadence.
+	if DAM_lastSend < 0 or (t - DAM_lastSend) >= 1.0 then
+		DAM_lastSend = t
 
-	-- 	--Sensor
-	-- 	--Exports sensor data from your aircraft.
-	-- 	LoGetTWSInfo = LoGetTWSInfo(),
-	-- 	LoGetTargetInformation = LoGetTargetInformation(),
-	-- 	LoGetLockedTargetInformation = LoGetLockedTargetInformation(),
-	-- 	LoGetF15_TWS_Contacts = LoGetF15_TWS_Contacts(),
-	-- 	LoGetSightingSystemInfo = LoGetSightingSystemInfo(),
-	-- 	LoGetWingTargets = LoGetWingTargets(),
+		-- Safe getter: call a LoGet* function, return nil on any error/absence so
+		-- one bad/undefined export call can never break the whole export hook.
+		local function G(fn)
+			if type(fn) ~= "function" then return nil end
+			local ok, v = pcall(fn)
+			if ok then return v end
+			return nil
+		end
 
-	-- 	--Ownship
-	-- 	--Exports data about your own aircraft. For example simple radio uses one of these to get the players current location and radio information.
-	-- 	LoGetPlayerPlaneId = LoGetPlayerPlaneId(),
-	-- 	LoGetIndicatedAirSpeed = LoGetIndicatedAirSpeed(),
-	-- 	LoGetAngleOfAttack = LoGetAngleOfAttack(),
-	-- 	LoGetAngleOfSideSlip = LoGetAngleOfSideSlip(),
-	-- 	LoGetAccelerationUnits = LoGetAccelerationUnits(),
-	-- 	LoGetVerticalVelocity = LoGetVerticalVelocity(),
-	-- 	LoGetADIPitchBankYaw = LoGetADIPitchBankYaw(),
-	-- 	LoGetTrueAirSpeed = LoGetTrueAirSpeed(),
-	-- 	LoGetAltitudeAboveSeaLevel = LoGetAltitudeAboveSeaLevel(),
-	-- 	LoGetAltitudeAboveGroundLevel = LoGetAltitudeAboveGroundLevel(),
-	-- 	LoGetMachNumber = LoGetMachNumber(),
-	-- 	LoGetRadarAltimeter = LoGetRadarAltimeter(),
-	-- 	LoGetMagneticYaw = LoGetMagneticYaw(),
-	-- 	LoGetGlideDeviation = LoGetGlideDeviation(),
-	-- 	LoGetSideDeviation = LoGetSideDeviation(),
-	-- 	LoGetSlipBallPosition = LoGetSlipBallPosition(),
-	-- 	LoGetBasicAtmospherePressure = LoGetBasicAtmospherePressure(),
-	-- 	LoGetControlPanel_HSI = LoGetControlPanel_HSI(),
-	-- 	LoGetEngineInfo = LoGetEngineInfo(),
-	-- 	LoGetSelfData = LoGetSelfData(),
-	-- 	LoGetCameraPosition = LoGetCameraPosition(),
-	-- 	LoSetCameraPosition = LoSetCameraPosition(),
-	-- 	--LoSetCommand = LoSetCommand(),
-	-- 	LoGetMCPState = LoGetMCPState(),
-	-- 	LoGetRoute = LoGetRoute(),
-	-- 	LoGetNavigationInfo = LoGetNavigationInfo(),
-	-- 	LoGetPayloadInfo = LoGetPayloadInfo(),
-	-- 	LoGetWingInfo = LoGetWingInfo(),
-	-- 	LoGetMechInfo = LoGetMechInfo(),
-	-- 	LoGetRadioBeaconsStatus = LoGetRadioBeaconsStatus(),
-	-- 	LoGetVectorVelocity = LoGetVectorVelocity(),
-	-- 	LoGetVectorWindVelocity = LoGetVectorWindVelocity(),
-	-- 	LoGetSnares = LoGetSnares(),
-	-- 	LoGetAngularVelocity = LoGetAngularVelocity(),
-	-- 	LoGetHeightWithObjects = LoGetHeightWithObjects(),
-	-- 	LoGetFMData = LoGetFMData(),
+		-- Surface wind: sample the wind at the ground point directly below the
+		-- aircraft, so the CARP SFC W/V can use the true surface-layer wind
+		-- instead of the aircraft-altitude wind (LoGetVectorWindVelocity).
+		-- Several candidate export functions are tried in order (which one is
+		-- exposed varies by DCS build / MP export environment). DAM_Wind_status
+		-- reports what happened so we can see it in the dump.
+		-- Surface wind for the CARP SFC W/V: sample at ~10 m (33 ft, the standard
+		-- surface-wind reference height) above the ground point below the aircraft,
+		-- so SFC W/V uses the true surface-layer wind instead of the aircraft-
+		-- altitude wind. LoGetWindAtPoint takes 3 numeric args (x, y, z world
+		-- coords) and returns 3 numbers (vx, vy, vz). VALIDATED in-sim.
+		local DAM_SurfaceWind = nil
+		do
+			local sd = G(LoGetSelfData)
+			local asl = G(LoGetAltitudeAboveSeaLevel)
+			local agl = G(LoGetAltitudeAboveGroundLevel)
+			if type(sd) == "table" and type(sd.Position) == "table"
+				and type(asl) == "number" and type(agl) == "number"
+				and type(LoGetWindAtPoint) == "function" then
+				local terrain = asl - agl                      -- ground elev under aircraft
+				local ok, sx, sy, sz = pcall(LoGetWindAtPoint,
+					sd.Position.x, terrain + 10.0, sd.Position.z)
+				if ok and type(sx) == "number" and type(sy) == "number"
+					and type(sz) == "number" then
+					DAM_SurfaceWind = { x = sx, y = sy, z = sz }
+				end
+			end
+		end
 
-	-- 	--Always
-	-- 	LoGetPilotName = LoGetPilotName(),
-	-- 	LoGetAltitude = LoGetAltitude(),
-	-- 	--LoGetNameByType = LoGetNameByType(),
-	-- 	--LoGeoCoordinatesToLoCoordinates = LoGeoCoordinatesToLoCoordinates(),
-	-- 	--LoCoordinatesToGeoCoordinates = LoCoordinatesToGeoCoordinates(),
-	-- 	LoGetVersionInfo = LoGetVersionInfo(),
-	-- 	LoGetWindAtPoint = LoGetWindAtPoint(),
-	-- 	LoGetModelTime = LoGetModelTime(),
-	-- 	LoGetMissionStartTime = LoGetMissionStartTime(),
-	-- }
+		local DcsAutoMateData = {
+			-- Surface-layer wind below the aircraft (for CARP SFC W/V).
+			DAM_SurfaceWind = DAM_SurfaceWind,
+			--Ownship
+			LoGetIndicatedAirSpeed = G(LoGetIndicatedAirSpeed), -- m/s
+			LoGetVerticalVelocity = G(LoGetVerticalVelocity),
+			LoGetTrueAirSpeed = G(LoGetTrueAirSpeed), -- m/s
+			LoGetAltitudeAboveSeaLevel = G(LoGetAltitudeAboveSeaLevel),
+			LoGetAltitudeAboveGroundLevel = G(LoGetAltitudeAboveGroundLevel),
+			LoGetMachNumber = G(LoGetMachNumber),
+			LoGetRadarAltimeter = G(LoGetRadarAltimeter),
+			LoGetEngineInfo = G(LoGetEngineInfo),
+			LoGetSelfData = G(LoGetSelfData),
+			LoGetPayloadInfo = G(LoGetPayloadInfo),
+			-- PROBE (temporary): route + nav info, to find the run-in leg course.
+			LoGetRoute = G(LoGetRoute),
+			LoGetNavigationInfo = G(LoGetNavigationInfo),
+			LoGetWayPointInfo = G(LoGetWayPointInfo),
+			LoGetMechInfo = G(LoGetMechInfo),
+			LoGetHeightWithObjects = G(LoGetHeightWithObjects),
+			LoGetFMData = G(LoGetFMData),
 
-	-- local dataString = tableToString(allDcsData)
+			-- Winds + pressure: useful for CARP INIT 3/5 (wind fields + altimeter).
+			-- Enabled (were commented out in the stock export).
+			LoGetVectorWindVelocity = G(LoGetVectorWindVelocity),
+			LoGetWindWithTurbulence = G(LoGetWindWithTurbulence),
+			LoGetBasicAtmospherePressure = G(LoGetBasicAtmospherePressure),
+			LoGetMagneticYaw = G(LoGetMagneticYaw),
+			LoGetAngleOfAttack = G(LoGetAngleOfAttack),
 
-	local DcsAutoMateData = {
-		--Object
-		--Allows for all objects to be accessible. For example this is how tacview knows and returns where every single object in the game is at.
-		--LoGetObjectById = LoGetObjectById(),
-		--LoGetWorldObjects = LoGetWorldObjects(),
+			--Always
+			LoGetPilotName = G(LoGetPilotName),
+			LoGetVersionInfo = G(LoGetVersionInfo),
+			LoGetModelTime = G(LoGetModelTime),
+			LoGetMissionStartTime = G(LoGetMissionStartTime),
+		}
 
-		--Sensor
-		--Exports sensor data from your aircraft.
-		--LoGetTWSInfo = LoGetTWSInfo(),
-		--LoGetTargetInformation = LoGetTargetInformation(),
-		--LoGetLockedTargetInformation = LoGetLockedTargetInformation(),
-		--LoGetF15_TWS_Contacts = LoGetF15_TWS_Contacts(),
-		--LoGetSightingSystemInfo = LoGetSightingSystemInfo(),
-		--LoGetWingTargets = LoGetWingTargets(),
+		local ok, dataString = pcall(tableToString, DcsAutoMateData)
+		if ok and dataString then
+			sender:sendData(dataString)
+		end
+	end
 
-		--Ownship
-		--Exports data about your own aircraft. For example simple radio uses one of these to get the players current location and radio information.
-		--LoGetPlayerPlaneId = LoGetPlayerPlaneId(),
-		LoGetIndicatedAirSpeed = LoGetIndicatedAirSpeed(), -- m/s
-		--LoGetAngleOfAttack = LoGetAngleOfAttack(),
-		--LoGetAngleOfSideSlip = LoGetAngleOfSideSlip(),
-		--LoGetAccelerationUnits = LoGetAccelerationUnits(),
-		LoGetVerticalVelocity = LoGetVerticalVelocity(),
-		--LoGetADIPitchBankYaw = LoGetADIPitchBankYaw(),
-		LoGetTrueAirSpeed = LoGetTrueAirSpeed(), -- m/s
-		LoGetAltitudeAboveSeaLevel = LoGetAltitudeAboveSeaLevel(),
-		LoGetAltitudeAboveGroundLevel = LoGetAltitudeAboveGroundLevel(),
-		LoGetMachNumber = LoGetMachNumber(),
-		LoGetRadarAltimeter = LoGetRadarAltimeter(),
-		--LoGetMagneticYaw = LoGetMagneticYaw(),
-		--LoGetGlideDeviation = LoGetGlideDeviation(),
-		--LoGetSideDeviation = LoGetSideDeviation(),
-		--LoGetSlipBallPosition = LoGetSlipBallPosition(),
-		--LoGetBasicAtmospherePressure = LoGetBasicAtmospherePressure(),
-		--LoGetControlPanel_HSI = LoGetControlPanel_HSI(),
-		LoGetEngineInfo = LoGetEngineInfo(),
-		LoGetSelfData = LoGetSelfData(),
-		--LoGetCameraPosition = LoGetCameraPosition(),
-		--LoSetCameraPosition = LoSetCameraPosition(),
-		--LoSetCommand = LoSetCommand(),
-		--LoGetMCPState = LoGetMCPState(),
-		--LoGetRoute = LoGetRoute(),
-		--LoGetNavigationInfo = LoGetNavigationInfo(),
-		LoGetPayloadInfo = LoGetPayloadInfo(),
-		--LoGetWingInfo = LoGetWingInfo(),
-		LoGetMechInfo = LoGetMechInfo(),
-		--LoGetRadioBeaconsStatus = LoGetRadioBeaconsStatus(),
-		--LoGetVectorVelocity = LoGetVectorVelocity(),
-		--LoGetVectorWindVelocity = LoGetVectorWindVelocity(),
-		--LoGetSnares = LoGetSnares(),
-		--LoGetAngularVelocity = LoGetAngularVelocity(),
-		LoGetHeightWithObjects = LoGetHeightWithObjects(),
-		LoGetFMData = LoGetFMData(),
-
-		--Always
-		LoGetPilotName = LoGetPilotName(),
-		--LoGetAltitude = LoGetAltitude(),
-		--LoGetNameByType = LoGetNameByType(),
-		--LoGeoCoordinatesToLoCoordinates = LoGeoCoordinatesToLoCoordinates(),
-		--LoCoordinatesToGeoCoordinates = LoCoordinatesToGeoCoordinates(),
-		LoGetVersionInfo = LoGetVersionInfo(),
-		--LoGetWindAtPoint = LoGetWindAtPoint(),
-		LoGetModelTime = LoGetModelTime(),
-		LoGetMissionStartTime = LoGetMissionStartTime(),
-	}
-	local dataString = tableToString(DcsAutoMateData)
-
-	sender:sendData(dataString)
-
-    return t + 1 -- call again after 1 second
+	return nextT
 end

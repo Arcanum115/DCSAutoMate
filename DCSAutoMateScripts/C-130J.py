@@ -38,17 +38,129 @@ def getScriptData():
 				'vars': {},
 			},
 			{
-				'name': 'Test: Engine Switch Click',
-				'function': 'TestEngineSwitches',
+				'name': 'CARP Test',
+				'function': 'CarpTest',
 				'vars': {
-					'Direction': ['1', '0'],
+					# Full CARP flow: PAYLOAD (WT+BAL) -> PI setup -> CARP INIT 2/5
+					# load. No input popup in DCSAutoMate, so values are dropdowns;
+					# arbitrary numerics are typed into the CNI scratchpad.
+					# --- PI / drop point (TheWay "Waypoint N" -> ident "LL0N") ---
+					'CARP Waypoint': ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
+					# --- PAYLOAD (WT+BAL) bundles ---
+					'Bundles': ['4', '1', '2', '3', '5', '6'],
+					'Weight lb ea': ['882', '300', '500', '1000', '1200', '1500',
+						'2000', '2200', '2500', '3000', '4000', '5000', '6000',
+						'7000', '8000', '9000', '10000', '11000', '12000', '13000',
+						'14000', '15000', '16000', '17000', '18000', '19000',
+						'20000'],
+					# First Station = the AFTMOST (largest) station; the stick steps
+					# forward (down) from here. Default 1005 = fully aft (the max).
+					'First Station': ['1005', '985', '965', '945', '925', '905',
+						'885', '865', '845', '825', '805', '785', '765', '745',
+						'725', '705', '685', '665', '645', '625', '605', '585',
+						'565', '545', '525', '505', '485', '465', '445', '425',
+						'405', '385', '365', '345'],
+					'Spacing in': ['60', '48', '72', '90', '120'],
+					# --- CARP INIT 2/5 load ---
+					'Load': ['CDS', 'HE'],
+					# CRS is the standard CDS release (user: always CRS).
+					'Release Sys': ['CRS', 'TOW', 'NA', 'EXTR'],
+					'Chute': ['G-12D', 'G-12E'],
+					'CAS': ['140', '130', '150', '160', '170', '180', '200', '220', '250'],
+					# --- CARP INIT 3/5 winds (auto-filled from the live export) ---
+					# FROM = meteorological (default); BLOWS-TO = raw DCS direction.
+					# OFF = don't touch the wind fields.
+					'Winds': ['FROM', 'BLOWS-TO', 'OFF'],
+					# --- CARP INIT 3/5 temperature ---
+					# Temperature isn't in the export, so give the surface temp from
+					# the mission briefing; ALT TEMP is computed by lapse rate for the
+					# drop altitude. SFC TEMP auto-populates, so we leave it.
+					'Surface Temp C': ['20', '15', '10', '25', '30', '5', '0', '-5'],
+					'Drop Alt ft': ['1000', '500', '800', '1250', '1500', '2000',
+						'2500', '5000', '10000'],
+					# --- CARP INIT 1/5 geometry (drop-zone dimensions) ---
+					# Defaults from the CARP walkthrough. OFF skips geometry entry.
+					'Geometry': ['ON', 'OFF'],
+					'LE-TE yd': ['1000', '500', '750', '1250', '1500', '2000'],
+					'LE-PI yd': ['100', '0', '50', '200', '300', '500'],
+					'SD Dist NM': ['6', '4', '5', '8', '10'],
+					'TP Dist NM': ['10', '6', '8', '12', '15'],
+					'DZ ESC NM': ['0.5', '1', '1.5', '2'],
+					# --- CARP INIT 4/5 drop altitude + elevations ---
+					# Drop Alt uses the 'Drop Alt ft' var above. QNH = MSL ref.
+					'Drop Alt Ref': ['QNH', 'PA'],
+					# PI ELEV and DZ ELEV are NOT dropdowns: both are pulled
+					# automatically from the selected waypoint's ACT LEGS "A"
+					# height (set by TheWay), PI == DZ.
+					'Min Drop Ht ft': ['600', '400', '500', '800', '1000'],
 				},
 			},
 			{
-				'name': 'Test: Master Warning Press (all combos)',
-				'function': 'TestMasterWarning',
+				# STAGE 1 read-only probe. Manually open CARP INIT page 2/5 on
+				# the pilot CNI (the page showing LOAD / CHUTE / ELEM WT-QTY /
+				# DROP PAYLD), THEN run this. It reads the CNI display text back
+				# so we can see the exact strings + their ordinal positions.
+				'name': 'CARP Cargo Probe',
+				'function': 'CarpProbe',
 				'vars': {
-					'Side': ['Pilot', 'Copilot'],
+					# Seconds to wait before reading, so you can be sure the
+					# CARP INIT 2 page is up first.
+					'Delay s': ['3', '5', '10'],
+					# Speak the raw strings aloud too (handy when eyes are on-screen).
+					'Speak': ['No', 'Yes'],
+				},
+			},
+			{
+				# Reads the live export wind (LoGetVectorWindVelocity) at Run time
+				# and reports the computed FROM-direction + speed, so we can check
+				# the vector->wind math against a known mission wind before wiring
+				# it into the CARP. Run on the ground -> surface-layer wind; at
+				# altitude -> that altitude's wind.
+				'name': 'Wind Check',
+				'function': 'WindCheck',
+				'vars': {},
+			},
+			{
+				# Dumps everything DCSAutoMateExport.lua sends (LoGet* data:
+				# position, altitudes, speeds, payload, mech, engine, winds if
+				# enabled). Survey tool to see what's usable for CARP.
+				# Requires DCSAutoMateExport.lua wired into Export.lua + a running
+				# mission. DCSAutoMate.py change -> needs rebuild/run-from-source.
+				'name': 'Export Dump',
+				'function': 'ExportDump',
+				'vars': {
+					'Delay s': ['2', '5', '10'],
+					# Only show keys containing this substring (kept short so the
+					# radio row doesn't overflow the panel).
+					'Filter': ['(all)', 'Wind', 'Route'],
+				},
+			},
+			{
+				# Drives the WT+BAL PAYLOAD entry that the sim requires before a
+				# CARP: the game does NOT hand cargo data to the avionics, the
+				# crew types each bundle's weight + bay station. A DOUBLE SLASH
+				# marks the entry as an airdrop (manual p.324). Defaults are the
+				# vanilla 4x CDS BARRELS @ 882 lb, stations 345/405/465/525.
+				'name': 'CARP Payload Entry',
+				'function': 'CarpPayload',
+				'vars': {
+					'Bundles': ['4', '1', '2', '3', '5', '6'],
+					'Weight lb ea': ['882', '300', '500', '1000', '1200', '1500',
+						'2000', '2200', '2500', '3000', '4000', '5000', '6000',
+						'7000', '8000', '9000', '10000', '11000', '12000', '13000',
+						'14000', '15000', '16000', '17000', '18000', '19000',
+						'20000'],
+					# First fuselage station of bundle 1; the rest step by Spacing.
+					# First Station = the AFTMOST (largest) station; the stick steps
+					# forward (down) from here. Default 1005 = fully aft (the max).
+					'First Station': ['1005', '985', '965', '945', '925', '905',
+						'885', '865', '845', '825', '805', '785', '765', '745',
+						'725', '705', '685', '665', '645', '625', '605', '585',
+						'565', '545', '525', '505', '485', '465', '445', '425',
+						'405', '385', '365', '345'],
+					'Spacing in': ['60', '48', '72', '90', '120'],
+					# Yes = double-slash (airdrop). No = single-slash (normal payload).
+					'Airdrop': ['Yes', 'No'],
 				},
 			},
 		],
@@ -296,9 +408,9 @@ def ColdStart(config, vars):
 	# --- Airplane Power Application ---
 	# Restore normal cadence for the rest of the cold start regardless of mode.
 	dt = 0.3
-	pushSeqCmd(dt, 'scriptSpeech', 'Applying power.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 	pushSeqCmd(dt, 'ELECTRICAL_BATTERY', 1, 'BATTERY - ON')
-	pushSeqCmd(2.0, 'scriptSpeech', 'Battery on.')
+	pushSeqCmd(2.0, '', '', 'announcement removed')
 
 	pushSeqCmd(dt, 'PLT_CC_LIGHTING_MASTER_DISPLAY_BRIGHTNESS',  int16(0.85))
 	pushSeqCmd(dt, 'CPLT_CC_LIGHTING_MASTER_DISPLAY_BRIGHTNESS', int16(0.85))
@@ -308,10 +420,10 @@ def ColdStart(config, vars):
 	# during engine start, so we always run the APU sequence below regardless.
 	if vars.get('External Power') == 'Yes':
 		pushSeqCmd(dt, 'ELECTRICAL_EXT_POWER_APU', 0, 'EXT PWR/APU - EXT PWR')
-		pushSeqCmd(2.0, 'scriptSpeech', 'External power applied.')
+		pushSeqCmd(2.0, '', '', 'announcement removed')
 
 	# --- APU Start (always run: APU bleed air is required for engine start) ---
-	pushSeqCmd(dt, 'scriptSpeech', 'Starting A P U.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 	# APU control switch is spring-loaded out of START. Procedure:
 	#   1) Drive switch to START (value 2)
 	#   2) Hold ~2s for the start sequence to engage
@@ -326,12 +438,22 @@ def ColdStart(config, vars):
 	# Periodic MC + MW silence while APU spools (~60s coverage).
 	mc_mw_silence(12, label='APU spool')
 
+	# Settle delay before the FIRST telemetry read of the script. DCS-BIOS
+	# streams string outputs (APU_NG etc.) byte-by-byte on a slower loop than
+	# the numeric outputs, and the client's buffer for a string is EMPTY until
+	# its first frame arrives. Polling APU_NG before that first frame makes the
+	# runner do int('') and crash (same failure class as the '\x01\x04' garbage
+	# read the README documents). This fixed wait guarantees at least one APU_NG
+	# frame has landed; once populated the string never reads empty again.
+	# (Cheap insurance — the APU needs this long to spool anyway.)
+	pushSeqCmd(5.0, '', '', 'Allow APU_NG telemetry to populate before first poll')
+
 	# Final guard — if APU is already at 100% (which it should be after the
 	# 60s of MC silencing above), this passes immediately. If for some reason
 	# the APU spool is slow, this will wait until it gets there.
 	pushSeqCmd(dt, 'scriptCockpitState',
 		control='C-130J/APU_NG', value=100, condition='>=', duration=2)
-	pushSeqCmd(dt, 'scriptSpeech', 'A P U at 100 percent.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 
 	# MC clear after APU online
 	pushSeqCmd(dt, 'PLT_MASTER_CAUTION', 1, 'MC clear after APU')
@@ -341,12 +463,12 @@ def ColdStart(config, vars):
 
 	# Open APU bleed air
 	pushSeqCmd(dt, 'BLEED_APU', 1, 'APU bleed air - OPEN')
-	pushSeqCmd(dt, 'scriptSpeech', 'Waiting for bleed air pressure.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 
 	# Wait for bleed pressure to reach 30 PSI
 	pushSeqCmd(dt, 'scriptCockpitState',
 		control='C-130J/BLEED_AIR_PRESSURE', value=30, condition='>=', duration=2)
-	pushSeqCmd(dt, 'scriptSpeech', 'Bleed air pressure stable.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 
 	# APU switch - click left one detent (value 0) to settle in RUN.
 	pushSeqCmd(dt, 'APU_SWITCH', 0, 'APU switch - click left to RUN')
@@ -361,7 +483,7 @@ def ColdStart(config, vars):
 
 	# --- Master Caution reset + ECB reset (full procedure from in-game checklist) ---
 	# MUST complete before engines can be started.
-	pushSeqCmd(dt, 'scriptSpeech', 'Resetting master caution.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 	pushSeqCmd(dt, 'PLT_MASTER_CAUTION', 1)
 	pushSeqCmd(0.5, 'PLT_MASTER_CAUTION', 0)
 	pushSeqCmd(0.3, 'PLT_MASTER_WARNING', 1, 'MW clear (initial)')
@@ -397,7 +519,7 @@ def ColdStart(config, vars):
 	pushSeqCmd(0.5, '', '', 'Wait for confirm prompt')
 	pushSeqCmd(dt, 'CNBP_BTN_R1', 1, 'CNBP LSK R1 - Confirm')
 	pushSeqCmd(0.2, 'CNBP_BTN_R1', 0)
-	pushSeqCmd(dt, 'scriptSpeech', 'E C Bs reset complete.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 	# MC + MW silence cycles after ECB reset (~15s coverage through
 	# alignment timer + BEFORE STARTING ENGINES).
 	mc_mw_silence(3, label='after ECB')
@@ -406,7 +528,7 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'TRIM_ELEV_TAB_PWR', 2, 'Elev trim power - NORM')
 
 	# CNI-MU initialization - wait for alignment to start
-	pushSeqCmd(dt, 'scriptSpeech', 'C N I M U initialising. Allow time for alignment.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 	pushSeqCmd(dt, 'scriptTimerStart', name='align', duration=5)
 
 
@@ -435,7 +557,7 @@ def ColdStart(config, vars):
 	# but this script issues the start clicks together since DCS does not enforce
 	# the sequencing rule. All four spool up in parallel for a faster start.
 	# ===========================================================================
-	pushSeqCmd(dt, 'scriptSpeech', 'Starting engines checklist.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 
 	# Verify bleed air valves at AUTO (middle) immediately before engine start
 	# (re-asserted in case anything moved them during APU bring-up)
@@ -454,7 +576,7 @@ def ColdStart(config, vars):
 		pushSeqCmd(0.4, f'FADEC_{n}', 1, f'FADEC {n} - NORM')
 
 	# Exterior lighting for engine start
-	pushSeqCmd(dt, 'EXT_NAV', 2, 'Nav lights - STEADY')
+	pushSeqCmd(dt, 'EXT_NAV', 0, 'Nav lights - STEADY (down)')
 	pushSeqCmd(dt, 'EXT_DIM', 1)
 	pushSeqCmd(dt, 'EXT_STROBE_TOP', 0, 'Top strobe - RED')
 	pushSeqCmd(dt, 'EXT_STROBE_BTM', 0, 'Bottom strobe - RED')
@@ -474,13 +596,13 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'ENG_3_START_SWITCH', 1, 'Engine 3 - click right')
 	pushSeqCmd(dt, 'ENG_4_START_SWITCH', 1, 'Engine 4 - click right')
 
-	pushSeqCmd(dt, 'scriptSpeech', 'Engines at start. Holding 30 seconds for spool up.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 
 	# MC + MW silence cycles for the entire 30s hold (~30s coverage).
 	mc_mw_silence(6, label='engine spool')
 
 	# After 30s at START, click each engine one detent left back to RUN
-	pushSeqCmd(dt, 'scriptSpeech', 'Releasing engine switches to run.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 	pushSeqCmd(dt, 'ENG_1_START_SWITCH', 0, 'Engine 1 - click left to RUN')
 	pushSeqCmd(dt, 'ENG_2_START_SWITCH', 0, 'Engine 2 - click left to RUN')
 	pushSeqCmd(dt, 'ENG_3_START_SWITCH', 0, 'Engine 3 - click left to RUN')
@@ -490,7 +612,7 @@ def ColdStart(config, vars):
 	mc_mw_silence(3, label='engines at RUN')
 
 	# --- Post-engine-start: CNBP LSK L1 ---
-	pushSeqCmd(dt, 'scriptSpeech', 'Engines running.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 
 	# CNBP LSK L1 press - single press only
 	pushSeqCmd(dt, 'CNBP_BTN_L1', 1, 'CNBP LSK L1 - press')
@@ -506,7 +628,7 @@ def ColdStart(config, vars):
 	# --- Generators online ---
 	# Generators were pre-staged to ON earlier - they come online as engines stabilise.
 	# APU stays RUNNING; the pilot decides when to shut it down.
-	pushSeqCmd(dt, 'scriptSpeech', 'Generators online. A P U remains running.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_1', 1, 'Gen 1 - ON')
 	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_2', 1)
 	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_3', 1)
@@ -584,20 +706,26 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'FUEL_XFEED_SHIP', 0)
 
 	# --- CNI-MU defensive systems configuration ---
-	# All CNI LSK buttons need an explicit press (value 1) AND release (value 0);
-	# missing the release leaves the soft key visually "stuck down".
+	# Every CNI key is a press (1) + release (0) pair, like a mouse click —
+	# press-only leaves the key held down indefinitely and the CNI can then
+	# swallow the next press of the same key.
+	#
+	# ROBUSTNESS: navigation is ABSOLUTE, not relative. MC INDX always lands
+	# on MSN CMPTR INDEX and R1 there always opens DEF SYS CTRL, so the walk
+	# re-anchors through MC INDX -> R1 before each sub-page visit instead of
+	# trusting relative "back" hops. Why it matters: if a page-branch press
+	# gets dropped while the CNI is redrawing, the following presses land on
+	# the WRONG page — and on DEF SYS CTRL, L4/L5 are the MWS/IRCM POWER
+	# toggles, so a mis-landed "arm" press powers a subsystem OFF. The L1
+	# MSTR PWR toggle then displays OFF (it reflects overall subsystem
+	# state), i.e. the defensive systems die mid-start. Every page change
+	# also gets >= 1.0s to settle before the next press for the same reason.
 	#
 	# Page flow (pilot CNI):
-	#   <starting page> -> MC INDX  -> MSN CMPTR INDEX
-	#   MSN CMPTR INDEX -> R1       -> DEF SYS CTRL
-	#       DEF SYS CTRL -> L1 (MSTR PWR), L4 (MWS PWR), L5 (IRCM PWR)
-	#       DEF SYS CTRL -> L3       -> CMDS sub-page
-	#           CMDS    -> L3 (OTHER1 ARM), L4 (OTHER2 ARM), L5 (JMR INTF ON)
-	#           CMDS    -> L6       -> back to DEF SYS CTRL
-	#       DEF SYS CTRL -> L2       -> RWR sub-page
-	#           RWR     -> R2 (SHOW UNK)
-	#           RWR     -> L6       -> back to DEF SYS CTRL
-	#   DEF SYS CTRL    -> MC INDX (x2) -> back out
+	#   MC INDX -> MSN CMPTR INDEX -> R1 -> DEF SYS CTRL -> L1 (MSTR PWR ON)
+	#   re-anchor -> DEF SYS CTRL -> L3 -> CMDS: L3 (OTHER1), L4 (OTHER2), L5 (JMR INTF)
+	#   re-anchor -> DEF SYS CTRL -> L2 -> RWR:  R2 (SHOW UNK)
+	#   MC INDX -> back out
 
 	# Dismiss anything currently on R4/R5 (e.g. a residual scratchpad prompt)
 	pushSeqCmd(dt,  'PLT_CNI_LSK_R4', 1, 'PLT CNI LSK R4 - press')
@@ -605,9 +733,11 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt,  'PLT_CNI_LSK_R5', 1, 'PLT CNI LSK R5 - press')
 	pushSeqCmd(0.3, 'PLT_CNI_LSK_R5', 0, 'PLT CNI LSK R5 - release')
 
-	# Navigate: MC INDX -> MSN CMPTR INDEX -> DEF SYS> (R1)
-	pushSeqCmd(dt, 'PLT_CNI_MC_INDX', 1, 'PLT CNI - to MSN CMPTR INDEX')
-	pushSeqCmd(dt, 'PLT_CNI_LSK_R1',  1, 'MSN CMPTR INDEX R1 - DEF SYS>')
+	# Navigate (absolute): MC INDX -> MSN CMPTR INDEX -> DEF SYS> (R1)
+	pushSeqCmd(dt,  'PLT_CNI_MC_INDX', 1, 'PLT CNI - to MSN CMPTR INDEX')
+	pushSeqCmd(0.3, 'PLT_CNI_MC_INDX', 0)
+	pushSeqCmd(1.0, 'PLT_CNI_LSK_R1',  1, 'MSN CMPTR INDEX R1 - DEF SYS>')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_R1',  0)
 
 	# DEF SYS CTRL: press MSTR PWR (L1) — this is a cascading master that
 	# powers MWS, IRCM and the rest of the defensive systems automatically.
@@ -615,42 +745,50 @@ def ColdStart(config, vars):
 	# ON once MSTR PWR is engaged, and pressing them would toggle them back
 	# OFF, which is what causes the "CMDS audio tones silent on cold start"
 	# bug we previously hit.
-	#
-	# IMPORTANT: every LSK press in this block uses an explicit press
-	# (value 1) + release (value 0) pair. Without releases, the CNI sometimes
-	# treats two back-to-back presses on the same key as a single held
-	# button and drops the second one.
-	pushSeqCmd(dt,  'PLT_CNI_LSK_L1', 1, 'DEF SYS L1 - MSTR PWR ON (cascades to MWS + IRCM)')
+	pushSeqCmd(1.0, 'PLT_CNI_LSK_L1', 1, 'DEF SYS L1 - MSTR PWR ON (cascades to MWS + IRCM)')
 	pushSeqCmd(0.3, 'PLT_CNI_LSK_L1', 0)
 	# Let MSTR PWR settle so the cascade lands on MWS / IRCM / CMDS before
 	# we navigate to the sub-pages.
-	pushSeqCmd(1.0, '', '', 'Wait for MSTR PWR cascade')
+	pushSeqCmd(2.0, '', '', 'Wait for MSTR PWR cascade')
+
+	# Re-anchor to a known page state before the CMDS walk.
+	pushSeqCmd(dt,  'PLT_CNI_MC_INDX', 1, 'Re-anchor: MC INDX')
+	pushSeqCmd(0.3, 'PLT_CNI_MC_INDX', 0)
+	pushSeqCmd(1.0, 'PLT_CNI_LSK_R1',  1, 'Re-anchor: R1 - DEF SYS>')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_R1',  0)
 
 	# CMDS sub-page (L3 from DEF SYS CTRL): arm OTHER1/OTHER2 and toggle JMR INTF ON.
 	# Defaults are OTHER1/2 SAFE + JMR INTF OFF, so a single press flips each.
-	pushSeqCmd(0.5, 'PLT_CNI_LSK_L3', 1, 'DEF SYS L3 - to CMDS page')
+	pushSeqCmd(1.0, 'PLT_CNI_LSK_L3', 1, 'DEF SYS L3 - to CMDS page')
 	pushSeqCmd(0.3, 'PLT_CNI_LSK_L3', 0)
-	pushSeqCmd(0.5, 'PLT_CNI_LSK_L3', 1, 'CMDS L3 - OTHER1 ARM')
+	pushSeqCmd(1.0, 'PLT_CNI_LSK_L3', 1, 'CMDS L3 - OTHER1 ARM')
 	pushSeqCmd(0.3, 'PLT_CNI_LSK_L3', 0)
 	pushSeqCmd(0.5, 'PLT_CNI_LSK_L4', 1, 'CMDS L4 - OTHER2 ARM')
 	pushSeqCmd(0.3, 'PLT_CNI_LSK_L4', 0)
 	pushSeqCmd(0.5, 'PLT_CNI_LSK_L5', 1, 'CMDS L5 - JMR INTF ON')
 	pushSeqCmd(0.3, 'PLT_CNI_LSK_L5', 0)
-	pushSeqCmd(0.5, 'PLT_CNI_LSK_L6', 1, 'CMDS L6 - back to DEF SYS CTRL')
-	pushSeqCmd(0.3, 'PLT_CNI_LSK_L6', 0)
 
-	# RWR sub-page (L2 from DEF SYS CTRL): toggle SHOW UNK on.
-	pushSeqCmd(0.5, 'PLT_CNI_LSK_L2', 1, 'DEF SYS L2 - to RWR page')
-	pushSeqCmd(0.3, 'PLT_CNI_LSK_L2', 0)
-	pushSeqCmd(0.5, 'PLT_CNI_LSK_R2', 1, 'RWR R2 - SHOW UNK toggle')
-	pushSeqCmd(0.3, 'PLT_CNI_LSK_R2', 0)
-	pushSeqCmd(0.5, 'PLT_CNI_LSK_L6', 1, 'RWR L6 - back to DEF SYS CTRL')
-	pushSeqCmd(0.3, 'PLT_CNI_LSK_L6', 0)
-
-	# Step back out twice (DEF SYS CTRL -> MSN CMPTR INDEX -> top)
-	pushSeqCmd(dt,  'PLT_CNI_MC_INDX', 1, 'PLT CNI MC INDX - back (1/2)')
+	# Re-anchor to a known page state before the RWR walk (replaces the old
+	# relative "L6 back" hops, which broke the rest of the walk if dropped).
+	pushSeqCmd(0.5, 'PLT_CNI_MC_INDX', 1, 'Re-anchor: MC INDX')
 	pushSeqCmd(0.3, 'PLT_CNI_MC_INDX', 0)
-	pushSeqCmd(dt,  'PLT_CNI_MC_INDX', 1, 'PLT CNI MC INDX - back (2/2)')
+	pushSeqCmd(1.0, 'PLT_CNI_LSK_R1',  1, 'Re-anchor: R1 - DEF SYS>')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_R1',  0)
+
+	# RWR sub-page (L2 from DEF SYS CTRL): toggle SHOW UNK on, then run the
+	# RWR self-tests (R4 = AUDIO TEST, R5 = MSL LAUNCH TEST — momentary,
+	# single press+release each).
+	pushSeqCmd(1.0, 'PLT_CNI_LSK_L2', 1, 'DEF SYS L2 - to RWR page')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_L2', 0)
+	pushSeqCmd(1.0, 'PLT_CNI_LSK_R2', 1, 'RWR R2 - SHOW UNK toggle')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_R2', 0)
+	pushSeqCmd(0.8, 'PLT_CNI_LSK_R4', 1, 'RWR R4 - AUDIO TEST')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_R4', 0)
+	pushSeqCmd(0.8, 'PLT_CNI_LSK_R5', 1, 'RWR R5 - MSL LAUNCH TEST')
+	pushSeqCmd(0.3, 'PLT_CNI_LSK_R5', 0)
+
+	# Back out to MSN CMPTR INDEX (absolute, single hop is enough)
+	pushSeqCmd(0.5, 'PLT_CNI_MC_INDX', 1, 'PLT CNI MC INDX - back out')
 	pushSeqCmd(0.3, 'PLT_CNI_MC_INDX', 0)
 
 	# Defensive systems master OPR for takeoff (clears CMDS FAIL warning)
@@ -665,6 +803,11 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'DSP_RWR_TGT_SEP', 1, 'RWR TGT SEP - press')
 	pushSeqCmd(dt, 'DSP_RWR_SRCH', 1, 'RWR SRCH - press')
 
+	# Pilot RWR volume: pull the knob out to monitor (right-click in game),
+	# then rotate to the 50% point.
+	pushSeqCmd(dt, 'PLT_ICS_RWR_BUTTON', 1, 'Pilot RWR volume knob - PULL to monitor')
+	pushSeqCmd(dt, 'PLT_ICS_RWR_VOLUME', int16(0.50), 'Pilot RWR volume - 50%')
+
 	# MC + MW silence cycles after defensive systems OPR (~15s coverage
 	# through ADP computer drop, HUD config, ARC-210 setup).
 	mc_mw_silence(3, label='post defensive')
@@ -673,32 +816,38 @@ def ColdStart(config, vars):
 	pushSeqCmd(dt, 'ADP_COMP_DROP', 1, 'Computer Drop - AD-MAN/TJ-AUTO')
 
 	# --- Pilot HUD: latch, TAC mode, NAV mode ---
-	pushSeqCmd(dt, 'scriptSpeech', 'Configuring HUD.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 	pushSeqCmd(dt, 'PLT_HUD_LATCH',    1, 'Pilot HUD Latch - press')
 	pushSeqCmd(dt, 'PLT_HUD_TAC_MODE', 1, 'Pilot HUD TAC mode - press')
 	pushSeqCmd(dt, 'PLT_HUD_NAV_MODE', 1, 'Pilot HUD NAV mode - press')
 
-	# --- Day exterior lighting state ---
-	# Unconditional day settings. The Night-mode block further below will
-	# override these with night-friendly values when Time = Night.
-	#   EXT_MASTER = 1  (up)
-	#   EXT_NAV    = 0  (down)
-	#   EXT_DIM    = 0  (down)
-	#   EXT_LEDGE  = 0  (down)
-	pushSeqCmd(dt, 'EXT_MASTER', 1, 'Exterior master - UP (day)')
-	pushSeqCmd(dt, 'EXT_NAV',    0, 'Nav lights mode - DOWN (day)')
-	pushSeqCmd(dt, 'EXT_DIM',    0, 'Nav lights brightness - DOWN (day)')
-	pushSeqCmd(dt, 'EXT_LEDGE',  0, 'Leading edge - DOWN (day)')
+	# --- Day exterior lighting state (Day profile only) ---
+	# The Night-mode block further below handles Time = Night instead.
+	# Day config: taxi / wingtip taxi / landing light motors DOWN,
+	# Covert/Formation brightness MAX, nav lights STEADY, exterior master NORM.
+	if vars.get('Time') != 'Night':
+		pushSeqCmd(dt, 'TAXI_LIGHT',   0, 'Taxi lights - DOWN (day)')
+		pushSeqCmd(dt, 'WINGTIP_TAXI', 0, 'Wingtip taxi - DOWN (day)')
+		pushSeqCmd(dt, 'LDG_MOTOR_L',  0, 'L landing motor - DOWN/RETRACT (day)')
+		pushSeqCmd(dt, 'LDG_MOTOR_R',  0, 'R landing motor - DOWN/RETRACT (day)')
+		pushSeqCmd(dt, 'EXT_FORM_BRT', int16(1.0), 'Covert/Formation brightness - MAX (day)')
+		pushSeqCmd(dt, 'EXT_NAV',      0, 'Nav lights - STEADY/down (day)')
+		pushSeqCmd(dt, 'EXT_DIM',      0, 'Nav lights brightness - DOWN (day)')
+		pushSeqCmd(dt, 'EXT_LEDGE',    0, 'Leading edge - DOWN (day)')
+		pushSeqCmd(dt, 'EXT_MASTER',   0, 'Exterior master - NORM/down (day)')
 
 	# --- ARC-210: TR+G + SQL on ---
-	pushSeqCmd(dt, 'scriptSpeech', 'Configuring A R C 2 1 0.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 	pushSeqCmd(dt, 'ARC210_OP_MODE', 1, 'ARC-210 op mode - TR+G')
 	pushSeqCmd(dt, 'ARC210_SQL',     1, 'ARC-210 SQL - ON')
 
 	# --- Standby ADI: cage then uncage to align ---
-	pushSeqCmd(dt, 'scriptSpeech', 'Aligning standby attitude indicator.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
 	pushSeqCmd(dt, 'STBY_ADI_CAGE', 1, 'Standby ADI - cage')
 	pushSeqCmd(1.0, 'STBY_ADI_CAGE', 0, 'Standby ADI - uncage (release)')
+	# Rotate the standby ADI pitch bias adjust just a smidge so the
+	# instrument actually uncages (all profiles).
+	pushSeqCmd(0.5, 'STBY_ADI_PITCH_BIAS', '+3200', 'Standby ADI bias adjust - nudge to uncage')
 
 	# Re-assert ATCS in case it got toggled off (clears ATCS OFF warning)
 	pushSeqCmd(dt, 'ATCS_GUARD', 1, 'ATCS guard - up')
@@ -710,7 +859,7 @@ def ColdStart(config, vars):
 	#   - All display screen brightness to lowest visible
 	#   - All external lights ON (NAV steady bright, landing, taxi, leading edge)
 	if vars.get('Time') == 'Night':
-		pushSeqCmd(dt, 'scriptSpeech', 'Configuring night lighting.')
+		pushSeqCmd(dt, '', '', 'announcement removed')
 
 		# --- Internal cockpit lights OFF ---
 		# Pilot side panel/console/dome/flood/floor
@@ -744,7 +893,7 @@ def ColdStart(config, vars):
 			pushSeqCmd(0.2, 'CPLT_CNI_BRT_ROCKER', 1)
 
 		# --- External lights ON ---
-		pushSeqCmd(dt, 'EXT_NAV',        2, 'NAV lights - STEADY')
+		pushSeqCmd(dt, 'EXT_NAV',        0, 'NAV lights - STEADY/down (night)')
 		pushSeqCmd(dt, 'EXT_DIM',        1, 'NAV brightness - BRIGHT')
 		pushSeqCmd(dt, 'EXT_LEDGE',      1, 'Leading edge - ON')
 		pushSeqCmd(dt, 'LDG_LIGHT_L',    1, 'L landing light - ON')
@@ -800,10 +949,10 @@ def ColdStart(config, vars):
 		pushSeqCmd(0.2,      'CPLT_MASTER_WARNING', 0)
 
 	# Final announcements
-	pushSeqCmd(dt,  'scriptSpeech', 'Countermeasures armed.')
-	pushSeqCmd(0.5, 'scriptSpeech', 'Radar and altimeter powered on.')
-	pushSeqCmd(0.5, 'scriptSpeech', 'Pilot action needed: set or deselect emergency parking brake.')
-	pushSeqCmd(0.5, 'scriptSpeech', 'Set HUDs as desired.')
+	pushSeqCmd(dt, '', '', 'announcement removed')
+	pushSeqCmd(0.5, '', '', 'announcement removed')
+	pushSeqCmd(0.5, '', '', 'announcement removed')
+	pushSeqCmd(0.5, '', '', 'announcement removed')
 
 	# --- FINAL: Navigate both CNI-MUs to POWER UP, then engage AUTONAV + MSTR AV ON ---
 	# POWER UP page is reached via INDX (INDEX 1/2) -> L1 (<POWER UP).
@@ -813,7 +962,7 @@ def ColdStart(config, vars):
 	#   R5 = AUTONAV      (toggle)
 	# Pilot AND copilot must both be on POWER UP with position synced (GPS) before
 	# AUTONAV / MSTR AV ON. These are the VERY LAST actions of the cold start.
-	pushSeqCmd(0.5, 'scriptSpeech', 'G P S is aligning. Estimated wait time approximately five minutes from system power on.')
+	pushSeqCmd(0.5, 'scriptSpeech', 'G P S alignment ongoing. E T A five minutes from startup. Check HUD to verify a true heading reading.')
 
 	# Pilot CNI -> POWER UP
 	pushSeqCmd(dt,  'PLT_CNI_INDX',   1, 'PLT CNI INDX - to INDEX')
@@ -827,16 +976,16 @@ def ColdStart(config, vars):
 	pushSeqCmd(0.5, 'CPLT_CNI_LSK_L1', 1, 'CPLT CNI L1 - <POWER UP')
 	pushSeqCmd(0.3, 'CPLT_CNI_LSK_L1', 0)
 
-	pushSeqCmd(0.5, 'scriptSpeech', 'Synchronising pilot and copilot navigation. Verifying G P S position on both C N I units.')
+	pushSeqCmd(0.5, '', '', 'announcement removed')
 
 	# --- Final actions: AUTONAV select, then MSTR AV ON select, on both CNIs ---
-	pushSeqCmd(0.5, 'scriptSpeech', 'Engaging autonav.')
+	pushSeqCmd(0.5, '', '', 'announcement removed')
 	pushSeqCmd(0.5, 'PLT_CNI_LSK_R5',  1, 'PLT CNI R5 - AUTONAV select')
 	pushSeqCmd(0.3, 'PLT_CNI_LSK_R5',  0)
 	pushSeqCmd(0.3, 'CPLT_CNI_LSK_R5', 1, 'CPLT CNI R5 - AUTONAV select')
 	pushSeqCmd(0.3, 'CPLT_CNI_LSK_R5', 0)
 
-	pushSeqCmd(0.5, 'scriptSpeech', 'Engaging master avionics.')
+	pushSeqCmd(0.5, '', '', 'announcement removed')
 	pushSeqCmd(0.5, 'PLT_CNI_LSK_R4',  1, 'PLT CNI R4 - MSTR AV ON select')
 	pushSeqCmd(0.3, 'PLT_CNI_LSK_R4',  0)
 	pushSeqCmd(0.3, 'CPLT_CNI_LSK_R4', 1, 'CPLT CNI R4 - MSTR AV ON select')
@@ -851,7 +1000,7 @@ def ColdStart(config, vars):
 	# Placed here as one of the last actions so engines are fully spooled and
 	# stable. Engines 1 and 2 still get a longer pre-press delay (~1.5s) —
 	# their FADECs occasionally refuse the LSGI input if pressed back-to-back.
-	pushSeqCmd(1.0, 'scriptSpeech', 'Setting low ground idle.')
+	pushSeqCmd(1.0, '', '', 'announcement removed')
 
 	# Engine 1: 1.5s pre-press, slightly longer hold (0.5s).
 	# The first LSGI click in the sequence seems to need a bit more hold
@@ -879,8 +1028,85 @@ def ColdStart(config, vars):
 	# after FADEC guards close) can be silently rejected by the system if
 	# engine state hasn't settled, so the engagement is performed here as
 	# the final functional action of the cold start.
-	pushSeqCmd(1.0, 'scriptSpeech', 'Engaging prop sync.')
+	pushSeqCmd(1.0, '', '', 'announcement removed')
 	pushSeqCmd(0.5, 'PROP_SYNC', 0, 'Prop sync - OFF/down')
+
+	# Release the APU bleed air push button - it stays visually stuck in the
+	# pressed position from the APU start unless clicked back out. Engines
+	# supply bleed air by now, so releasing (closing APU bleed) is correct.
+	pushSeqCmd(0.5, 'BLEED_APU', 0, 'APU bleed button - release/out (close)')
+
+	# =====================================================================
+	# PILOT AMU / HDD DISPLAY CONFIGURATION
+	# =====================================================================
+	# Done at the very end so all display/avionics systems are powered.
+	#
+	# AMU MODEL (decoded from the mod's AMU_CNBP page files + manual):
+	#   The pilot AMU has TWO screens. The MAIN MENU spans both:
+	#     LEFT screen  (PLT_AMU_L_*) = main_menu_1: <PFD <ENGINE <CAPS |
+	#                   NAV-RADAR>(R1) SYS STATUS>(R2) DIG MAP>(R3) TAWS>(R4)
+	#     RIGHT screen (PLT_AMU_R_*) = main_menu_2: <NAV SELECT <ACAWS
+	#                   <DIAGNOSTICS <PREFLIGHT | DEFAULTS>(R1) --(R2)
+	#                   LIGHTING>(R3) GCAS/TAWS AND STALL>(R4)
+	#   A page renders on the SAME screen it was selected from; its sub-pages
+	#   (HDD POS / RANGE / OVERLAYS) render on the OTHER screen. When a display
+	#   page is selected, HDD POS auto-appears on the other screen.
+	#   LSK order in every page: L1 L2 L3 L4 then R1 R2 R3 R4.
+	#
+	#   DISPLAY page (NAV-RADAR/TAWS): L-screen R1=RANGE> R2=OVERLAYS>
+	#       R3=HDD POS> R4=MAIN MENU>.  DIG MAP: R1=color, R2=OVERLAYS>,
+	#       R3=HDD POS>, R4=MAIN MENU> (no range).
+	#   HDD POS sub-page (R-screen): L1=HDD1 L2=HDD2 L3=HDD3 L4=HDD4.
+	#   RANGE sub-page (R-screen): R2=40(8)  R3=80(16).
+	#   OVERLAYS sub-page (R-screen): L2=TACTICAL  R2=RWR  R4=CLEAR ALL.
+	#   GCAS/TAWS page (from main_menu_2 R4, renders on R-screen):
+	#       L1=NORMAL/TACTICAL  R1=POPUP INHIBIT  R2=TERR INHIBIT  R4=MAIN MENU>.
+	#
+	# All keys press(1)+release(0) like the CNI. 1.2s settle after each page
+	# change (AMU redraw). Assumes the AMU is at MAIN MENU to start (power-on
+	# default) and that toggles start from their default state (one press =
+	# desired state). VERIFY on first run; if presses hit the wrong screen the
+	# two screens are swapped -> flip PLT_AMU_L_* <-> PLT_AMU_R_*.
+	pushSeqCmd(1.0, 'scriptSpeech', 'Configuring pilot displays.')
+
+	def amu(dt_, key, msg=''):
+		# key like 'L_R1' -> PLT_AMU_L_R1; press + release
+		pushSeqCmd(dt_, f'PLT_AMU_{key}', 1, msg)
+		pushSeqCmd(0.15, f'PLT_AMU_{key}', 0)
+
+	# --- TAWS -> HDD2, RANGE 40, RWR overlay ---
+	amu(0.6, 'L_R4', 'MAIN MENU L-R4 - TAWS> (select TAWS onto L screen)')
+	amu(0.6, 'R_L2', 'HDD POS R-L2 - HDD 2')            # HDD POS auto on R screen
+	amu(0.6, 'L_R1', 'TAWS DISPLAY L-R1 - RANGE>')
+	amu(0.6, 'R_R2', 'RANGE R-R2 - 40 (8)')
+	amu(0.6, 'L_R2', 'TAWS DISPLAY L-R2 - OVERLAYS>')
+	amu(0.6, 'R_R2', 'OVERLAYS R-R2 - RWR enable')
+	amu(0.6, 'L_R4', 'TAWS DISPLAY L-R4 - MAIN MENU> (back)')
+
+	# --- DIG MAP -> HDD3 (no further edits) ---
+	amu(0.6, 'L_R3', 'MAIN MENU L-R3 - DIG MAP> (select onto L screen)')
+	amu(0.6, 'R_L3', 'HDD POS R-L3 - HDD 3')
+	amu(0.6, 'L_R4', 'DIG MAP DISPLAY L-R4 - MAIN MENU> (back)')
+
+	# --- NAV-RADAR -> HDD1, RANGE 80, RWR overlay ---
+	amu(0.6, 'L_R1', 'MAIN MENU L-R1 - NAV-RADAR> (select onto L screen)')
+	amu(0.6, 'R_L1', 'HDD POS R-L1 - HDD 1')
+	amu(0.6, 'L_R1', 'NAV-RADAR DISPLAY L-R1 - RANGE>')
+	amu(0.6, 'R_R3', 'RANGE R-R3 - 80 (16)')
+	amu(0.6, 'L_R2', 'NAV-RADAR DISPLAY L-R2 - OVERLAYS>')
+	amu(0.6, 'R_R2', 'OVERLAYS R-R2 - RWR enable')
+	amu(0.6, 'L_R4', 'NAV-RADAR DISPLAY L-R4 - MAIN MENU> (back)')
+
+	# --- GCAS/TAWS: TACTICAL on, POPUP INHIBIT on, TERR INHIBIT on ---
+	# Selected from main_menu_2 (RIGHT screen) R4, but the page itself renders
+	# on the LEFT screen (the active-page screen — same as the display pages),
+	# so all of its option keys are PLT_AMU_L_*. (Confirmed by test: the
+	# NORMAL/TACTICAL toggle appears on the left AMU.)
+	amu(0.6, 'R_R4', 'MAIN MENU R-R4 - GCAS/TAWS AND STALL> (select; page opens on L screen)')
+	amu(0.6, 'L_L1', 'GCAS/TAWS L-L1 - NORMAL/TACTICAL -> TACTICAL')
+	amu(0.6, 'L_R1', 'GCAS/TAWS L-R1 - POPUP INHIBIT on')
+	amu(0.6, 'L_R2', 'GCAS/TAWS L-R2 - TERR INHIBIT on')
+	amu(0.6, 'L_R4', 'GCAS/TAWS L-R4 - MAIN MENU> (back)')
 
 	pushSeqCmd(0.5, 'scriptSpeech', 'Cold start complete.')
 
@@ -917,295 +1143,823 @@ def Shutdown(config, vars):
 			seq.append(step)
 
 	pushSeqCmd(0, '', '', "C-130J Shutdown sequence")
-	pushSeqCmd(dt, 'scriptSpeech', 'Beginning shutdown. Parking brake set, throttles ground idle.')
-	pushSeqCmd(dt, 'PARKING_BRAKE', 1, 'Parking brake - SET')
+	pushSeqCmd(dt, 'scriptSpeech', 'Shutting down.')
 
-	# Exterior lights off
-	pushSeqCmd(dt, 'LDG_LIGHT_L', 0)
-	pushSeqCmd(dt, 'LDG_LIGHT_R', 0)
-	pushSeqCmd(dt, 'LDG_MOTOR_L', 0, 'L landing - RETRACT')
-	pushSeqCmd(dt, 'LDG_MOTOR_R', 0, 'R landing - RETRACT')
-	pushSeqCmd(dt, 'TAXI_LIGHT', 0)
-	pushSeqCmd(dt, 'WINGTIP_TAXI', 0)
-	pushSeqCmd(dt, 'EXT_STROBE_TOP', 1, 'Top strobe - OFF')
-	pushSeqCmd(dt, 'EXT_STROBE_BTM', 1, 'Bottom strobe - OFF')
-	pushSeqCmd(dt, 'EXT_LEDGE', 0)
-
-	# Defensive systems STBY
-	pushSeqCmd(dt, 'DSP_ECM_MASTER', 0)
-	pushSeqCmd(dt, 'DSP_IRCM_MASTER', 0)
-	pushSeqCmd(dt, 'DSP_CMDS_MODE', 0)
-	pushSeqCmd(dt, 'DSP_DEFENSIVE_MASTER_SWITCH', 0)
-
-	# Radar OFF
-	pushSeqCmd(dt, 'RCP_MASTER_POWER', 0)
-
-	# Pitot/NESA heat OFF
-	pushSeqCmd(dt, 'ICE_PITOT_P', 0)
-	pushSeqCmd(dt, 'ICE_PITOT_CP', 0)
-	pushSeqCmd(dt, 'ICE_NESA_CTR', 0)
-	pushSeqCmd(dt, 'ICE_NESA_SIDE', 0)
-
-	# APU stays OFF during shutdown — no electrical transition. Just set the
-	# APU switch to STOP (value 0) and close bleed. Generators drop offline
-	# with the engines; battery carries any residual loads until the final
-	# battery-off press at the end of the sequence.
-	pushSeqCmd(dt, 'APU_SWITCH', 0, 'APU - STOP')
-	pushSeqCmd(dt, 'BLEED_APU', 0, 'APU bleed - CLOSED')
-
-	# Engine shutdown
-	pushSeqCmd(dt, 'scriptSpeech', 'Shutting down engines.')
-	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_1', 0)
-	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_2', 0)
-	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_3', 0)
-	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_4', 0)
-	pushSeqCmd(dt, 'PROP_SYNC', 0)
-	pushSeqCmd(dt, 'ATCS_GUARD', 1)
-	pushSeqCmd(dt, 'ATCS', 0)
-	pushSeqCmd(dt, 'ATCS_GUARD', 0)
-
-	# Engine start switches are relative-click controls (see ColdStart for full
-	# explanation). Detent order left-to-right is MOTOR / STOP / RUN / START,
-	# so from RUN we need ONE click LEFT (value 0) to land at STOP.
+	# Simple shutdown - rapid fire, no delays.
+	# 1. All 4 engine start switches to STOP (one detent LEFT = value 0).
 	pushSeqCmd(dt, 'ENG_1_START_SWITCH', 0, 'Engine 1 - click LEFT to STOP')
 	pushSeqCmd(dt, 'ENG_2_START_SWITCH', 0, 'Engine 2 - click LEFT to STOP')
 	pushSeqCmd(dt, 'ENG_3_START_SWITCH', 0, 'Engine 3 - click LEFT to STOP')
 	pushSeqCmd(dt, 'ENG_4_START_SWITCH', 0, 'Engine 4 - click LEFT to STOP')
-	pushSeqCmd(dt, 'scriptSpeech', 'Engines commanded to STOP.')
 
-	# Hydraulics OFF
-	pushSeqCmd(dt, 'HYD_ENG_PUMP_1_UTIL', 0)
-	pushSeqCmd(dt, 'HYD_ENG_PUMP_2_UTIL', 0)
-	pushSeqCmd(dt, 'HYD_ENG_PUMP_3_BOOST', 0)
-	pushSeqCmd(dt, 'HYD_ENG_PUMP_4_BOOST', 0)
-	pushSeqCmd(dt, 'HYD_AUX_PUMP', 0)
-	pushSeqCmd(dt, 'HYD_SUCT_BOOST_UTIL', 0)
-	pushSeqCmd(dt, 'HYD_SUCT_BOOST_BOOST', 0)
+	# Prop sync switch UP (value 1). Given a real delay (not the 0.02s rapid
+	# fire) so the command isn't dropped — that drop is why it appeared stuck
+	# down at both values before.
+	pushSeqCmd(0.3, 'PROP_SYNC', 1, 'Prop sync - UP')
 
-	# Flight control boost OFF
-	for cvr, sw in [
-		('CTRL_BOOST_AILERON_BOOST_GUARD','CTRL_BOOST_AILERON_BOOST'),
-		('CTRL_BOOST_AILERON_UTIL_GUARD','CTRL_BOOST_AILERON_UTIL'),
-		('CTRL_BOOST_RUDDER_BOOST_GUARD','CTRL_BOOST_RUDDER_BOOST'),
-		('CTRL_BOOST_RUDDER_UTIL_GUARD','CTRL_BOOST_RUDDER_UTIL'),
-		('CTRL_BOOST_ELEVATOR_BOOST_GUARD','CTRL_BOOST_ELEVATOR_BOOST'),
-		('CTRL_BOOST_ELEVATOR_UTIL_GUARD','CTRL_BOOST_ELEVATOR_UTIL'),
-	]:
-		pushSeqCmd(dt, cvr, 1)
-		pushSeqCmd(dt, sw, 0)
-		pushSeqCmd(dt, cvr, 0)
+	# ATCS flipped UP to OFF (down=ON, up=OFF; value 1 = up). Under a guard.
+	pushSeqCmd(0.3, 'ATCS_GUARD', 1, 'ATCS guard - up')
+	pushSeqCmd(0.3, 'ATCS', 1, 'ATCS - UP (OFF)')
+	pushSeqCmd(0.3, 'ATCS_GUARD', 0, 'ATCS guard - down')
 
-	pushSeqCmd(dt, 'TRIM_ELEV_TAB_PWR', 0)
-	pushSeqCmd(dt, 'CC_FLAP_LEVER', 0, 'Flaps - UP')
+	# 2. APU start switch to OFF/STOP (left click).
+	pushSeqCmd(dt, 'APU_SWITCH', 0, 'APU switch - OFF/STOP')
 
-	# A/C OFF
-	pushSeqCmd(dt, 'AC_FLT_PWR', 0)
-	pushSeqCmd(dt, 'AC_CARGO_PWR', 0)
+	# 3. External Power/APU switch to middle OFF position.
+	pushSeqCmd(dt, 'ELECTRICAL_EXT_POWER_APU', 1, 'EXT PWR/APU - OFF (middle)')
 
-	# Anti-skid OFF
-	pushSeqCmd(dt, 'ANTI_SKID', 0)
+	# 4. Battery switch UP to OFF (right click).
+	pushSeqCmd(dt, 'ELECTRICAL_BATTERY', 0, 'Battery - OFF (up)')
 
-	# EXT PWR / APU selector to OFF. (APU switch was already commanded to
-	# STOP and APU bleed already closed at the top of the shutdown — no
-	# APU electrical transition is performed in this fork.)
-	pushSeqCmd(dt, 'ELECTRICAL_EXT_POWER_APU', 1, 'EXT PWR/APU - OFF')
+	# 5. Generators 1-4 OFF (right click).
+	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_1', 0, 'Gen 1 - OFF')
+	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_2', 0, 'Gen 2 - OFF')
+	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_3', 0, 'Gen 3 - OFF')
+	pushSeqCmd(dt, 'ELECTRICAL_GENERATOR_4', 0, 'Gen 4 - OFF')
 
-	# Lighting off
-	pushSeqCmd(dt, 'PLT_CC_LIGHTING_MASTER_DISPLAY_BRIGHTNESS', 0)
-	pushSeqCmd(dt, 'CPLT_CC_LIGHTING_MASTER_DISPLAY_BRIGHTNESS', 0)
-	pushSeqCmd(dt, 'PLT_CC_LIGHTING_PANEL_BACKLIGHTING', 0)
-	pushSeqCmd(dt, 'CPLT_CC_LIGHTING_PANEL_BACKLIGHTING', 0)
-	pushSeqCmd(dt, 'PLT_CC_LIGHTING_FLOOD_LIGHT_BRIGHTNESS', 0)
-	pushSeqCmd(dt, 'CPLT_CC_LIGHTING_FLOOD_LIGHT_BRIGHTNESS', 0)
-	pushSeqCmd(dt, 'CPLT_CC_LIGHTING_OVERHEAD_PANEL_BACKLIGHTING', 0)
-	pushSeqCmd(dt, 'CPLT_CC_LIGHTING_OVERHEAD_FLOOD_LIGHT_BRIGHTNESS', 0)
-	pushSeqCmd(dt, 'CPLT_CC_LIGHTING_CONSOLE_LIGHT_BRIGHTNESS', 0)
-	pushSeqCmd(dt, 'PLT_CC_LIGHTING_FLOOR_LIGHT_BRIGHTNESS', 0)
-	pushSeqCmd(dt, 'PLT_CC_LIGHTING_DOME_BRIGHTNESS', 0)
-	pushSeqCmd(dt, 'EXT_NAV', 1, 'Nav - OFF')
-
-	# Battery OFF
-	pushSeqCmd(dt, 'ELECTRICAL_BATTERY', 0, 'Battery - OFF')
-
-	pushSeqCmd(dt, 'scriptSpeech', 'Shutdown complete. Aircraft is cold and dark.')
+	pushSeqCmd(dt, 'scriptSpeech', 'Shutdown complete.')
 	return seq
 
 
 ###############################################################################
-# TEST: Engine Switch Position - send one click direction to all 4 engines.
-#   value 0 = click switch one detent to the LEFT
-#   value 1 = click switch one detent to the RIGHT
-# Use this to nudge engines one detent at a time and observe the result.
+# CARP TEST  (auto Computed Air Release Point - WORK IN PROGRESS)
+# ---------------------------------------------------------------------------
+# Goal: drive the pilot CNI-MU to build/verify a CARP airdrop solution for a
+# waypoint that the mission has designated. Built one page at a time.
+#
+# ACCESS PATH (from the manual + CNI page files):
+#   The CARP INIT pages are reached from a CARP-type waypoint:
+#     LEGS -> select the waypoint -> WAYPOINT DATA 1/2 -> R6 "MFP>" ->
+#       (waypoint type CARP) -> CARP INIT 1/5
+#   MFP>  = WAYPOINT DATA 1/2 / 2/2 R6.  It branches to CARP INIT ONLY if the
+#   waypoint TYPE is already "CARP" (else WPT -> MISSIONS).  << OPEN QUESTION:
+#   is the mission waypoint pre-typed CARP, or must we convert it via MISSIONS?
+#
+# CARP INIT LSK MAP (pilot CNI; each LSK spans two render rows: rows 1-2=L1,
+# 3-4=L2, 5-6=L3, 7-8=L4, 9-10=L5, 11-12=L6; same for R1-R6). From the mod's
+# CNI_MU/pages/carp_init_*.lua:
+#
+#   CARP INIT 1/5 (drop zone / geometry):
+#     L1 LBL/IDENT (PI waypoint id)   R1 TOT (time on target)
+#     L2 PI POSITION (lat/long)       R3 LE-PI (yd)
+#     L3 LENGTH LE-TE (yd)            R4 TP DIST (NM)
+#     L4 SD DIST (NM)                 R5 DZ ESC (NM)
+#     L5 RUN IN CRS                   R6 CARP PROG>
+#     L6 <back (MISSIONS/LEGS)
+#
+#   CARP INIT 2/5 (load):
+#     L1 LOAD  (PER/CDS/HE/BDL-OTH)   R1 FUS STA (CDS/HE/BDL)
+#     L2 STAGE (1/2)                  R2 RELEASE SYS (per load type)
+#     L3 CHUTE/#                       R3 ELEM WT/QTY
+#     L4 CAS                          R4 DROP PAYLD
+#     L5 RACETRACK (ESC/L/R)          R5 CHUTE LIST>
+#     L6 <back                        R6 CARP PROG>
+#
+#   CARP INIT 3/5 (weather):
+#     L1 ALT W/V     L3 SFC W/V   L5 ALTIMETER SETTING (QNH/QFE) + R5 press val
+#     R1 ALT TEMP    R3 SFC TEMP
+#
+#   CARP INIT 4/5 (altitude/elevation):
+#     L1 DROP ALTITUDE ref (QNH/PA)   R1 DROP ALTITUDE value
+#     L4 RQD CLNC HT                  R3 PI ELEVATION
+#     L5 MIN DROP HT                  R4 OBSTR ELEV   R5 DZ ELEV
+#
+#   CARP INIT 5/5 = ballistics readout (display only, no entry).
+#
+# NO-INPUT-POPUP WORKAROUND: arbitrary values are typed into the CNI scratchpad
+# with cni_type() (keyboard keys), then the target LSK is pressed to accept.
+# Multi-toggle fields (LOAD, STAGE, RACETRACK, ALTIMETER SETTING, DROP ALT ref)
+# are cycled by pressing their LSK N times.
 ###############################################################################
-def TestEngineSwitches(config, vars):
+
+# --- CNI scratchpad keyboard helper -----------------------------------------
+# Maps characters to the pilot CNI keyboard DCS-BIOS controls so the script can
+# "type" any identifier/number into the scratchpad, then press an LSK to enter.
+_CNI_KEY = {
+	'0': 'PLT_CNI_KBD_0', '1': 'PLT_CNI_KBD_1', '2': 'PLT_CNI_KBD_2',
+	'3': 'PLT_CNI_KBD_3', '4': 'PLT_CNI_KBD_4', '5': 'PLT_CNI_KBD_5',
+	'6': 'PLT_CNI_KBD_6', '7': 'PLT_CNI_KBD_7', '8': 'PLT_CNI_KBD_8',
+	'9': 'PLT_CNI_KBD_9', '.': 'PLT_CNI_KBD_DOT', '/': 'PLT_CNI_KBD_SLASH',
+	'-': 'PLT_CNI_KBD_PLUSMINUS', '+': 'PLT_CNI_KBD_PLUSMINUS',
+}
+for _c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
+	_CNI_KEY[_c] = f'PLT_CNI_KBD_{_c}'
+
+
+def CarpProbe(config, vars):
+	"""
+	STAGE 1 CARGO/LOAD PROBE (read-only).
+
+	The mod does NOT expose loaded-cargo (type / chute / weight / qty) as
+	readable cockpit params -- that data lives in a compiled device and only
+	surfaces on the CARP INIT 2/5 page, where the aircraft auto-fills:
+	    LOAD class, CHUTE/#, ELEM WT/QTY, DROP PAYLD
+	from whatever cargo is currently staged. We read those back off the pilot
+	CNI display (DCS-BIOS indicator id 8) via the CARP_PROBE_A/B string exports.
+
+	Because we read what the CNI shows, server-custom cargo weights come through
+	automatically; vanilla weights are just the default case.
+
+	HOW TO USE:
+	  1. Load your cargo (e.g. 4x CDS BARRELS, G-12D) as normal.
+	  2. On the pilot CNI, open CARP INIT page 2/5 (the LOAD/CHUTE/ELEM page).
+	  3. Run this profile. It waits, then prints (and optionally speaks) the raw
+	     CNI dump as "index=value;" pairs so we can read the exact strings and
+	     their ordinal positions. Nothing in the cockpit is touched.
+	"""
 	seq = []
-	seqTime = 0
-	dt = 0.3
-	value = int(vars.get('Direction', '1'))
-	direction = 'right' if value == 1 else 'left'
 
 	def pushSeqCmd(dt, cmd, *args, **kwargs):
-		nonlocal seq, seqTime
 		if len(args):
-			seq.append({
-				'time': round(dt, 2),
-				'cmd': cmd,
-				'arg': args[0],
-				'msg': args[1] if len(args) > 1 else '',
-			})
+			seq.append({'time': round(dt, 2), 'cmd': cmd, 'arg': args[0],
+				'msg': args[1] if len(args) > 1 else ''})
 		else:
-			step = {
-				'time': round(dt, 2),
-				'cmd': cmd,
-			}
+			step = {'time': round(dt, 2), 'cmd': cmd}
 			for key in kwargs:
 				step[key] = kwargs[key]
 			seq.append(step)
 
-	pushSeqCmd(0, '', '', f'Engine switch test - all engines click {direction}')
-	pushSeqCmd(dt, 'scriptSpeech', f'Clicking all four engine switches {direction}.')
+	delay = float(vars.get('Delay s', '5'))
+	speak = (vars.get('Speak', 'No') == 'Yes')
 
-	pushSeqCmd(dt, 'ENG_1_START_SWITCH', value, f'Engine 1 - click {direction}')
-	pushSeqCmd(dt, 'ENG_2_START_SWITCH', value, f'Engine 2 - click {direction}')
-	pushSeqCmd(dt, 'ENG_3_START_SWITCH', value, f'Engine 3 - click {direction}')
-	pushSeqCmd(dt, 'ENG_4_START_SWITCH', value, f'Engine 4 - click {direction}')
+	pushSeqCmd(0, '', '', 'CARP Cargo Probe (read-only). Be on CARP INIT page 2/5.')
+	pushSeqCmd(0.5, 'scriptSpeech',
+		'Carp cargo probe. Make sure carp init page 2 is showing.')
+	pushSeqCmd(delay, '', '', f'Waited {delay:g}s - reading CNI now')
 
-	pushSeqCmd(dt, 'scriptSpeech', f'Click {direction} sent. Note position.')
+	# One-shot reads of the two probe strings. Print always; speak if requested.
+	pushSeqCmd(0.5, 'scriptEcho', arg='C-130J/CARP_PROBE_A',
+		msg='CNI dump elems 1-24:', speak=speak)
+	pushSeqCmd(0.5, 'scriptEcho', arg='C-130J/CARP_PROBE_B',
+		msg='CNI dump elems 25-55:', speak=speak)
+
+	pushSeqCmd(0.5, 'scriptSpeech',
+		'Probe complete. Check the DCS Automate window for the dump.')
+
+	# ---------------------------------------------------------------------
+	# What to send back after running this:
+	#   the two "ECHO ... CARP_PROBE_A/B = ..." lines from the DCSAutoMate
+	#   window. From those ordinals we replace the wide probes with four narrow
+	#   per-field reads (LOAD class, CHUTE/#, ELEM WT/QTY, DROP PAYLD) and wire
+	#   them into the CARP build as the dynamic cargo values.
+	# ---------------------------------------------------------------------
 	return seq
 
 
-###############################################################################
-# TEST: Master Warning Press - exhaustive button-interaction sweep.
-#
-# Walks through every combo of pressing / releasing / holding / repeating /
-# arg-value-variations against the chosen side's Master Warning button, with
-# TTS announcements between each phase so the user can watch the cockpit
-# button and identify which combo actually depresses it.
-#
-# Vars:
-#   Side: 'Pilot' or 'Copilot' - which Master Warning button to test.
-#
-# A short cross-check at the end also fires the matching Master Caution
-# button so the user can verify the wiring isn't swapped.
-###############################################################################
-def TestMasterWarning(config, vars):
+def _wind_vec_to_dirspeed(w):
+	"""
+	Convert a DCS wind VELOCITY vector to meteorological (FROM) direction + speed.
+
+	DCS world frame: x = North, y = Up, z = East (m/s). The vector points the way
+	the wind blows TO; meteorology reports where it comes FROM, so
+	FROM = (blows-to + 180) mod 360.
+
+	Returns (from_deg, speed_kt, blows_to_deg) or None.
+	"""
+	import math
+	if not isinstance(w, dict):
+		return None
+	x = float(w.get('x', 0) or 0)   # North m/s
+	z = float(w.get('z', 0) or 0)   # East  m/s
+	speed_kt = round(math.hypot(x, z) * 1.94384)
+	blows_to = round(math.degrees(math.atan2(z, x))) % 360
+	from_deg = (blows_to + 180) % 360
+	return (from_deg, speed_kt, blows_to)
+
+
+def _wind_from_export(config, key='LoGetVectorWindVelocity'):
+	"""
+	Meteorological wind from the build-time export snapshot.
+	key='LoGetVectorWindVelocity' = wind at the aircraft's altitude (ALT W/V);
+	key='DAM_SurfaceWind'          = surface-layer wind below the aircraft (SFC W/V).
+	Returns (from_deg, speed_kt, blows_to_deg) or None.
+	"""
+	data = (config or {}).get('DAMExportData', {}) or {}
+	return _wind_vec_to_dirspeed(data.get(key))
+
+
+def _runin_from_legs(config, wp):
+	"""
+	Read the inbound leg course to waypoint LL0<wp> from the ACT LEGS page,
+	captured at build time in the CNI dump strings (CARP_PROBE_A/B = indication 8).
+
+	On ACT LEGS each waypoint block renders as [course^, distNM, time, *LL0N, ...],
+	so the inbound leg course sits 3 elements before the "*LL0N" name element
+	(observed: 008->LL01, 012->LL02, 027->LL03). That leg course IS the run-in.
+
+	Returns the course as an int (0..359) or None if not found (e.g. not on the
+	ACT LEGS page when Run was clicked, or the waypoint isn't on the shown page).
+	"""
+	data = (config or {}).get('DCSBIOSData', {}) or {}
+
+	# Preferred: the compact "LL0N=deg;" map from CARP_LEGS_CRS (no truncation,
+	# all waypoints).
+	crs = data.get('C-130J/CARP_LEGS_CRS')
+	if isinstance(crs, str) and crs.strip():
+		for pair in crs.split(';'):
+			if '=' in pair:
+				name, deg = pair.split('=', 1)
+				if name.strip() == f'LL0{wp}':
+					digits = ''.join(c for c in deg if c.isdigit())
+					if digits:
+						return int(digits) % 360
+
+	# Fallback: parse the raw CNI ordinal dump (CARP_PROBE_A/B). The inbound leg
+	# course sits 3 elements before the "*LL0N" name element.
+	dump = ''
+	for k in ('C-130J/CARP_PROBE_A', 'C-130J/CARP_PROBE_B'):
+		v = data.get(k)
+		if isinstance(v, str):
+			dump += v
+	idxval = {}
+	for pair in dump.split(';'):
+		if '=' in pair:
+			ks, vs = pair.split('=', 1)
+			try:
+				idxval[int(ks)] = vs
+			except ValueError:
+				pass
+	target = f'*LL0{wp}'
+	for idx, val in idxval.items():
+		if val.strip() == target:
+			course = idxval.get(idx - 3, '')          # course is 3 elements before name
+			digits = ''.join(c for c in course if c.isdigit())
+			if digits:
+				return int(digits) % 360
+	return None
+
+
+def _elev_from_legs(config, wp):
+	"""
+	Waypoint ground ELEVATION (ft) for LL0<wp>, read from the ACT LEGS page.
+
+	On ACT LEGS each waypoint carries a "----/NNNNNA" field whose digits before the
+	trailing "A" are the elevation in feet ASL (set per waypoint by TheWay). The
+	module exports the compact map "LL01=1;LL02=568;LL03=1552;" in CARP_LEGS_ELEV,
+	captured in the same build snapshot as the run-in course (both come from ACT
+	LEGS). We just read the drop waypoint's entry.
+
+	Returns the elevation as an int, or None if not present (e.g. not on ACT LEGS at
+	build, or that waypoint has no elevation). Callers fall back to the dropdown.
+	"""
+	data = (config or {}).get('DCSBIOSData', {}) or {}
+	raw = data.get('C-130J/CARP_LEGS_ELEV')
+	if not isinstance(raw, str) or not raw.strip():
+		return None
+	for pair in raw.split(';'):
+		if '=' in pair:
+			name, val = pair.split('=', 1)
+			if name.strip() == f'LL0{wp}':
+				val = val.strip()
+				neg = val.startswith('-')
+				digits = ''.join(c for c in val if c.isdigit())
+				if digits:
+					return -int(digits) if neg else int(digits)
+	return None
+
+
+def _bundle_stations(first, spacing, bundles, lo=345, hi=1005):
+	"""
+	Fuselage stations for a stick of <bundles> CDS bundles.
+
+	First Station is the AFTMOST (largest) station: bundle 1 sits there and the
+	stick steps FORWARD (down) by Spacing -- first, first-spacing, first-2*spacing,
+	... No station can exceed the aft bay limit (hi=1005); any that would fall
+	forward of the bay start (lo=345) is dropped. Returns the station list, aftmost
+	first (so max() == First Station == the FUS STA reference).
+	"""
+	first = min(int(first), hi)          # can't go higher than the aft limit
+	out = []
+	for i in range(int(bundles)):
+		s = first - i * int(spacing)
+		if s < lo or s > hi:
+			break
+		out.append(s)
+	return out
+
+
+def WindCheck(config, vars):
+	"""
+	Report the export wind as computed FROM-direction + speed, to validate the
+	vector->wind conversion (and the FROM-vs-blows-to convention) against a
+	known mission wind before wiring it into the CARP INIT 3/5 fields.
+	"""
 	seq = []
-	seqTime = 0
-	dt = 0.3
 
 	def pushSeqCmd(dt, cmd, *args, **kwargs):
-		nonlocal seq, seqTime
 		if len(args):
-			seq.append({
-				'time': round(dt, 2),
-				'cmd': cmd,
-				'arg': args[0],
-				'msg': args[1] if len(args) > 1 else '',
-			})
+			seq.append({'time': round(dt, 2), 'cmd': cmd, 'arg': args[0],
+				'msg': args[1] if len(args) > 1 else ''})
 		else:
-			step = {
-				'time': round(dt, 2),
-				'cmd': cmd,
-			}
-			for key in kwargs:
-				step[key] = kwargs[key]
+			step = {'time': round(dt, 2), 'cmd': cmd}
+			for key_ in kwargs:
+				step[key_] = kwargs[key_]
 			seq.append(step)
 
-	side = vars.get('Side', 'Pilot')
-	if side == 'Copilot':
-		mw_ctrl = 'CPLT_MASTER_WARNING'
-		mc_ctrl = 'CPLT_MASTER_CAUTION'
+	wind = _wind_from_export(config)
+	if wind is None:
+		msg = 'No wind data in export snapshot. Is the export flowing?'
 	else:
-		mw_ctrl = 'PLT_MASTER_WARNING'
-		mc_ctrl = 'PLT_MASTER_CAUTION'
+		fdir, spd, bto = wind
+		msg = (f'Export wind: FROM {fdir:03d} deg at {spd} kt '
+			f'(blows to {bto:03d}). CARP entry would be {fdir:03d}/{spd:02d}.')
+	pushSeqCmd(0, '', '', msg)
+	pushSeqCmd(0.5, 'scriptSpeech', msg)
+	return seq
 
-	pushSeqCmd(0,    '', '', f'Master Warning interaction sweep - {side} side')
-	pushSeqCmd(dt,   'scriptSpeech',
-		f'Master warning test starting. Side: {side}. Watch the master warning button.')
-	pushSeqCmd(2.0,  '', '', 'Hold before first phase')
 
-	# --- Phase A: single press (value 1), no release ---
-	pushSeqCmd(dt,   'scriptSpeech', 'Phase A. Single press, value one, no release.')
-	pushSeqCmd(2.0,  mw_ctrl, 1, 'A: press (value 1) — no release')
-	pushSeqCmd(3.0,  'scriptSpeech', 'Phase A complete. Note button state.')
+def ExportDump(config, vars):
+	"""
+	Dump all data from the DCSAutoMate LoGet* export (DCSAutoMateExport.lua) via
+	the scriptExportDump command, to survey what's available for CARP automation
+	(ownship lat/long from LoGetSelfData, altitudes, speeds, payload, mech state,
+	and -- if uncommented in the .lua -- winds and atmospheric pressure).
 
-	# --- Phase B: single release (value 0) without prior press ---
-	pushSeqCmd(dt,   'scriptSpeech', 'Phase B. Single release, value zero.')
-	pushSeqCmd(2.0,  mw_ctrl, 0, 'B: release (value 0) — no prior press')
-	pushSeqCmd(3.0,  'scriptSpeech', 'Phase B complete. Note button state.')
+	Requires DCSAutoMateExport.lua wired into Export.lua and a mission running.
+	The receiver updates ~1 Hz, so give it a couple seconds first.
+	"""
+	seq = []
 
-	# --- Phase C: standard press + release ---
-	pushSeqCmd(dt,   'scriptSpeech', 'Phase C. Press value one, then release value zero.')
-	pushSeqCmd(1.0,  mw_ctrl, 1, 'C: press (value 1)')
-	pushSeqCmd(0.3,  mw_ctrl, 0, 'C: release (value 0)')
-	pushSeqCmd(3.0,  'scriptSpeech', 'Phase C complete.')
+	def pushSeqCmd(dt, cmd, *args, **kwargs):
+		if len(args):
+			seq.append({'time': round(dt, 2), 'cmd': cmd, 'arg': args[0],
+				'msg': args[1] if len(args) > 1 else ''})
+		else:
+			step = {'time': round(dt, 2), 'cmd': cmd}
+			for key_ in kwargs:
+				step[key_] = kwargs[key_]
+			seq.append(step)
 
-	# --- Phase D: press, 1s hold, release ---
-	pushSeqCmd(dt,   'scriptSpeech', 'Phase D. Press, hold one second, release.')
-	pushSeqCmd(1.0,  mw_ctrl, 1, 'D: press (value 1)')
-	pushSeqCmd(1.0,  mw_ctrl, 0, 'D: release after 1s hold')
-	pushSeqCmd(3.0,  'scriptSpeech', 'Phase D complete.')
+	delay = float(vars.get('Delay s', '2'))
+	filt = vars.get('Filter', '(all)')
+	filt = '' if filt in ('(all)', '', None) else filt
 
-	# --- Phase E: press, 2s hold, release ---
-	pushSeqCmd(dt,   'scriptSpeech', 'Phase E. Press, hold two seconds, release.')
-	pushSeqCmd(1.0,  mw_ctrl, 1, 'E: press (value 1)')
-	pushSeqCmd(2.0,  mw_ctrl, 0, 'E: release after 2s hold')
-	pushSeqCmd(3.0,  'scriptSpeech', 'Phase E complete.')
+	pushSeqCmd(0, '', '', 'Export Dump: survey of DCSAutoMate LoGet* export data')
+	pushSeqCmd(0.5, 'scriptSpeech', 'Dumping export data.')
+	pushSeqCmd(delay, '', '', f'Waited {delay:g}s for export data to arrive')
+	pushSeqCmd(0.5, 'scriptExportDump', msg='survey', filter=filt)
+	pushSeqCmd(0.5, 'scriptSpeech',
+		'Export dump complete. Check the DCS Automate window.')
+	return seq
 
-	# --- Phase F: three rapid press+release cycles ---
-	pushSeqCmd(dt,   'scriptSpeech', 'Phase F. Three rapid press and release cycles.')
-	for i in range(1, 4):
-		pushSeqCmd(0.6, mw_ctrl, 1, f'F: rapid cycle {i} press')
-		pushSeqCmd(0.2, mw_ctrl, 0, f'F: rapid cycle {i} release')
-	pushSeqCmd(3.0,  'scriptSpeech', 'Phase F complete.')
 
-	# --- Phase G: five presses without releases (repeated press 1) ---
-	pushSeqCmd(dt,   'scriptSpeech', 'Phase G. Five presses without releases.')
-	for i in range(1, 6):
-		pushSeqCmd(0.6, mw_ctrl, 1, f'G: press {i} without release')
-	pushSeqCmd(1.0,  mw_ctrl, 0, 'G: final release to clear state')
-	pushSeqCmd(3.0,  'scriptSpeech', 'Phase G complete.')
+def CarpPayload(config, vars):
+	"""
+	Drive the WT+BAL PAYLOAD entry the sim requires before a CARP.
 
-	# --- Phase H: double-click (press release press release) ---
-	pushSeqCmd(dt,   'scriptSpeech', 'Phase H. Double click.')
-	pushSeqCmd(1.0,  mw_ctrl, 1, 'H: first press')
-	pushSeqCmd(0.1,  mw_ctrl, 0, 'H: first release')
-	pushSeqCmd(0.1,  mw_ctrl, 1, 'H: second press')
-	pushSeqCmd(0.3,  mw_ctrl, 0, 'H: second release')
-	pushSeqCmd(3.0,  'scriptSpeech', 'Phase H complete.')
+	The game does NOT transfer loaded cargo to the avionics -- the crew types
+	each bundle's weight + bay station on the PAYLOAD page. A DOUBLE SLASH
+	between weight and station marks it as an AIRDROP payload (manual p.324),
+	which the page redraws with an inverse slash.
 
-	# --- Phase I: unusual argument values (2, then -1) ---
-	pushSeqCmd(dt,   'scriptSpeech', 'Phase I. Unusual argument values: two, then negative one.')
-	pushSeqCmd(1.0,  mw_ctrl, 2, 'I: send value 2 (unusual)')
-	pushSeqCmd(2.0,  mw_ctrl, 0, 'I: release (value 0)')
-	pushSeqCmd(1.0,  mw_ctrl, -1, 'I: send value -1 (unusual)')
-	pushSeqCmd(2.0,  mw_ctrl, 0, 'I: release (value 0)')
-	pushSeqCmd(3.0,  'scriptSpeech', 'Phase I complete.')
+	Nav path: MC INDX key -> L3 (WT+BAL) -> L4 (PAYLOAD).
+	Fill order of the 10 PAYLOAD slots: L1..L5 then R1..R5.
 
-	# --- Phase J: cross-check the OTHER side's Master Warning ---
-	other_side = 'Copilot' if side == 'Pilot' else 'Pilot'
-	other_mw = 'CPLT_MASTER_WARNING' if side == 'Pilot' else 'PLT_MASTER_WARNING'
-	pushSeqCmd(dt,   'scriptSpeech',
-		f'Phase J. Cross check: pressing the {other_side} master warning instead.')
-	pushSeqCmd(1.0,  other_mw, 1, f'J: {other_side} MW press')
-	pushSeqCmd(0.3,  other_mw, 0, f'J: {other_side} MW release')
-	pushSeqCmd(3.0,  'scriptSpeech', 'Phase J complete.')
+	Bundles are laid out from First Station, stepping by Spacing. Fuselage
+	stations run 345..1005; entries past 1005 are skipped. NOTE: this even-
+	spacing model doesn't yet cover custom / two-per-row layouts (two pallets
+	sharing one station) -- that's a later enhancement.
+	"""
+	seq = []
 
-	# --- Phase K: cross-check Master Caution on the same side ---
-	pushSeqCmd(dt,   'scriptSpeech',
-		f'Phase K. Cross check: pressing the {side} master caution instead.')
-	pushSeqCmd(1.0,  mc_ctrl, 1, f'K: {side} MC press')
-	pushSeqCmd(0.3,  mc_ctrl, 0, f'K: {side} MC release')
-	pushSeqCmd(3.0,  'scriptSpeech', 'Phase K complete.')
+	def pushSeqCmd(dt, cmd, *args, **kwargs):
+		if len(args):
+			seq.append({'time': round(dt, 2), 'cmd': cmd, 'arg': args[0],
+				'msg': args[1] if len(args) > 1 else ''})
+		else:
+			step = {'time': round(dt, 2), 'cmd': cmd}
+			for key_ in kwargs:
+				step[key_] = kwargs[key_]
+			seq.append(step)
 
-	# --- Phase L: simultaneous press on BOTH sides ---
-	pushSeqCmd(dt,   'scriptSpeech', 'Phase L. Simultaneous pilot and copilot master warning press.')
-	pushSeqCmd(1.0,  'PLT_MASTER_WARNING',  1, 'L: PLT MW press')
-	pushSeqCmd(0.0,  'CPLT_MASTER_WARNING', 1, 'L: CPLT MW press (same instant)')
-	pushSeqCmd(0.3,  'PLT_MASTER_WARNING',  0, 'L: PLT MW release')
-	pushSeqCmd(0.0,  'CPLT_MASTER_WARNING', 0, 'L: CPLT MW release')
-	pushSeqCmd(3.0,  'scriptSpeech', 'Phase L complete.')
+	def key(cmd, msg=''):
+		# CNI function/mode key press+release.
+		pushSeqCmd(0.5, cmd, 1, msg)
+		pushSeqCmd(0.2, cmd, 0)
 
-	pushSeqCmd(1.0,  'scriptSpeech',
-		'Master warning sweep finished. Report which phase actually depressed the button.')
+	def lsk(k, msg='', dt=0.25, rel=0.1):
+		pushSeqCmd(dt, f'PLT_CNI_LSK_{k}', 1, msg)
+		pushSeqCmd(rel, f'PLT_CNI_LSK_{k}', 0)
+
+	def cni_type(text, msg='', dt=0.09, rel=0.05):
+		if msg:
+			pushSeqCmd(0.3, '', '', msg)
+		for ch in str(text).upper():
+			k = _CNI_KEY.get(ch)
+			if k is None:
+				continue
+			pushSeqCmd(dt, k, 1)
+			pushSeqCmd(rel, k, 0)
+
+	bundles = int(vars.get('Bundles', '4'))
+	weight  = str(vars.get('Weight lb ea', '882'))
+	first   = int(vars.get('First Station', '1005'))
+	spacing = int(vars.get('Spacing in', '60'))
+	sep     = '//' if vars.get('Airdrop', 'Yes') == 'Yes' else '/'
+
+	slots = ['L1', 'L2', 'L3', 'L4', 'L5', 'R1', 'R2', 'R3', 'R4', 'R5']
+	bundles = max(1, min(bundles, len(slots)))
+
+	pushSeqCmd(0, '', '', f'CARP Payload Entry: {bundles} x {weight}lb from '
+		f'stn {first} step {spacing}, {"airdrop //" if sep == "//" else "normal /"}')
+	pushSeqCmd(1.0, 'scriptSpeech',
+		f'Entering {bundles} payload bundles at {weight} pounds.')
+
+	# --- Navigate to PAYLOAD: MC INDX -> WT+BAL (L3) -> PAYLOAD (L4) ---
+	key('PLT_CNI_MC_INDX', 'MC INDX key -> MSN CMPTR INDEX')
+	pushSeqCmd(0.8, '', '', 'Settle on MSN CMPTR INDEX')
+	lsk('L3', 'L3 -> WT + BAL')
+	pushSeqCmd(0.8, '', '', 'Settle on WT + BAL')
+	lsk('L4', 'L4 -> PAYLOAD')
+	pushSeqCmd(1.0, '', '', 'Settle on PAYLOAD page')
+
+	# --- Type each bundle: "<weight>//<station>" then the next LSK ---
+	# No CLR needed: pressing the LSK to apply the entry auto-clears the
+	# scratchpad on the PAYLOAD page (confirmed in-sim).
+	# First Station is the AFTMOST (largest) station; the stick steps FORWARD
+	# (down) by Spacing so every bundle is entered for weight & balance.
+	stations = _bundle_stations(first, spacing, bundles)
+	if len(stations) < bundles:
+		pushSeqCmd(0.3, 'scriptSpeech',
+			f'Only {len(stations)} of {bundles} bundles fit forward of station '
+			f'{first}. Lower the First Station or Spacing.')
+	for i, station in enumerate(stations):
+		entry = f'{weight}{sep}{station}'
+		cni_type(entry, f'Bundle {i + 1}: {entry} at {slots[i]}')
+		lsk(slots[i], f'Enter bundle {i + 1} at {slots[i]}')
+
+	pushSeqCmd(0.5, 'scriptSpeech',
+		'Payload entry complete. Verify T O payload and arm total.')
+
+	# ---------------------------------------------------------------------
+	# NEXT STEP (user-confirmed: ELEM WT/QTY does NOT auto-pull from PAYLOAD).
+	# On CARP INIT 2/5 (manual pp.298-299):
+	#   L1 = cycle load class to CDS   L2 = STAGE
+	#   L3 = CHUTE/#  (type or CHUTE LIST> downselect, e.g. G-12D/1)
+	#   R1 = FUS STA (first element station)
+	#   R2 = RELEASE SYS (TOW/EXTR for CDS)
+	#   R3 = ELEM WT/QTY -> type "<wt>/<qty>" e.g. 882/4 -> "882LB/4"
+	#   R4 = DROP PAYLD (auto-computes from R3; manual override allowed)
+	# ---------------------------------------------------------------------
+	return seq
+
+
+def CarpTest(config, vars):
+	"""
+	Full CARP airdrop flow, three phases in one run:
+	  PHASE 1  PAYLOAD (WT+BAL)  -- prerequisite; type each bundle weight//station
+	  PHASE 2  PI setup          -- copy the drop waypoint, paste into CARP INIT 1/5
+	  PHASE 3  CARP INIT 2/5 load-- load class, FUS STA, ELEM WT/QTY, release, chute
+
+	Backed by the DCS C-130J manual (pp.296-324) and a CARP walkthrough:
+	  - PAYLOAD: "weight//station", DOUBLE SLASH = airdrop (inverse-slash on screen)
+	  - ELEM WT/QTY = "<wt>/<count>" e.g. 882/4 for four 882 lb containers
+	  - Chute: CHUTE LIST -> downselect chute -> back -> L3 (number auto-generates 1)
+	  - DROP PAYLD (R4) auto-computes from ELEM WT/QTY
+	All CNI keys are press+release. LSK-apply auto-clears the scratchpad (as on
+	the PAYLOAD page), so no CLR between typed fields.
+
+	Confirmed in-sim: fresh CARP defaults LOAD=CDS and RELEASE=CRS, so both are
+	0 presses at defaults (CDS airdrops always use CRS); chute L3 number
+	auto-generates. VERIFY only for non-default picks:
+	  * CHUTE LIST positions assumed G-12D=L1, G-12E=L2 (G-12E untested).
+	"""
+	seq = []
+
+	# Global speed factor for the whole CARP flow: 0.5 = 50% faster across the
+	# board (every step -- key presses, LSK applies, page settles -- routes through
+	# pushSeqCmd). A small floor keeps DCS-BIOS presses long enough to register.
+	CARP_SPEED = 0.5
+	def pushSeqCmd(dt, cmd, *args, **kwargs):
+		dt = dt * CARP_SPEED
+		if dt and dt < 0.05:
+			dt = 0.05
+		if len(args):
+			seq.append({'time': round(dt, 2), 'cmd': cmd, 'arg': args[0],
+				'msg': args[1] if len(args) > 1 else ''})
+		else:
+			step = {'time': round(dt, 2), 'cmd': cmd}
+			for key_ in kwargs:
+				step[key_] = kwargs[key_]
+			seq.append(step)
+
+	def fkey(cmd, msg=''):
+		# CNI function/mode key press+release (LEGS, MSN, MC INDX, NEXT PAGE).
+		pushSeqCmd(0.6, cmd, 1, msg)
+		pushSeqCmd(0.25, cmd, 0)
+
+	def lsk(k, msg='', dt=0.5, rel=0.2):
+		pushSeqCmd(dt, f'PLT_CNI_LSK_{k}', 1, msg)
+		pushSeqCmd(rel, f'PLT_CNI_LSK_{k}', 0)
+
+	def cni_type(text, msg='', dt=0.22, rel=0.12):
+		if msg:
+			pushSeqCmd(0.3, '', '', msg)
+		for ch in str(text).upper():
+			k = _CNI_KEY.get(ch)
+			if k is None:
+				continue
+			pushSeqCmd(dt, k, 1)
+			pushSeqCmd(rel, k, 0)
+
+	def cycle(k, n, msg=''):
+		# Press a multi-toggle LSK n times to advance the selection.
+		for i in range(n):
+			pushSeqCmd(0.6, f'PLT_CNI_LSK_{k}', 1, (msg if i == 0 else ''))
+			pushSeqCmd(0.25, f'PLT_CNI_LSK_{k}', 0)
+
+	def execkey(msg='EXEC - commit/save this CARP page'):
+		# Press EXEC to save the current CARP page's entries before advancing.
+		# Each page is EXEC'd once it's fully filled (page 1 complete -> EXEC ->
+		# page 2 ...), so nothing is lost when NEXT PAGE changes the display.
+		pushSeqCmd(0.6, 'PLT_CNI_EXEC', 1, msg)
+		pushSeqCmd(0.3, 'PLT_CNI_EXEC', 0)
+		pushSeqCmd(0.6, '', '', 'Settle after EXEC')
+
+	# --- vars ---
+	carp_wp = vars.get('CARP Waypoint', '1')
+	pi_ident = f'LL0{carp_wp}'                       # TheWay "Waypoint N" -> LL0N
+	bundles = max(1, min(int(vars.get('Bundles', '4')), 10))
+	weight  = str(vars.get('Weight lb ea', '882'))
+	first   = int(vars.get('First Station', '1005'))
+	spacing = int(vars.get('Spacing in', '60'))
+	# Bundle stations: First Station (aftmost/largest) stepping FORWARD by Spacing.
+	stations = _bundle_stations(first, spacing, bundles)
+	load    = vars.get('Load', 'CDS')
+	rel     = vars.get('Release Sys', 'CRS')
+	chute   = vars.get('Chute', 'G-12D')
+	cas     = str(vars.get('CAS', '140'))
+	winds   = vars.get('Winds', 'FROM')             # FROM / BLOWS-TO / OFF
+	sfc_tmp = int(vars.get('Surface Temp C', '20')) # surface temp from briefing
+	drop_ft = int(vars.get('Drop Alt ft', '1000'))  # planned drop altitude (ft)
+	# CARP INIT 1/5 geometry (drop-zone dimensions).
+	geom    = vars.get('Geometry', 'ON')
+	le_te   = vars.get('LE-TE yd', '1000')
+	le_pi   = vars.get('LE-PI yd', '100')
+	sd_dist = vars.get('SD Dist NM', '6')
+	tp_dist = vars.get('TP Dist NM', '10')
+	dz_esc  = vars.get('DZ ESC NM', '0.5')
+	# CARP INIT 4/5 drop altitude + elevations.
+	drop_ref = vars.get('Drop Alt Ref', 'QNH')      # QNH / PA (L1 toggle)
+	# PI ELEV comes straight from the selected waypoint's ACT LEGS "A" (ASL) height,
+	# set per waypoint by TheWay -- no manual dropdown. Falls back to 0 ft only if
+	# that waypoint has no elevation / the CNI wasn't on ACT LEGS at Run.
+	# The CARP 4/5 page enforces PI <= OBSTR <= DZ, so we step each up 10 ft:
+	#   OBSTR ELEV = PI + 10 ,  DZ ELEV = OBSTR + 10 (= PI + 20),
+	# and they MUST be entered PI-first, then OBSTR, then DZ (see phase 5).
+	pi_elev_n    = _elev_from_legs(config, carp_wp)
+	pi_elev_n    = pi_elev_n if pi_elev_n is not None else 0
+	obstr_elev_n = pi_elev_n + 10
+	dz_elev_n    = obstr_elev_n + 10
+	pi_elev    = str(pi_elev_n)
+	obstr_elev = str(obstr_elev_n)
+	dz_elev    = str(dz_elev_n)
+	min_dh   = vars.get('Min Drop Ht ft', '600')
+	qty     = bundles                                # elements = bundle count
+
+	LOAD_OPTS = ['PER', 'CDS', 'HE', 'BDL-OTH']
+	# Confirmed in-sim: a fresh CARP defaults to CDS, so cycle L1 relative to
+	# CDS (CDS=0 presses, HE=1, BDL-OTH=2, PER=3). The toggle wraps.
+	LOAD_DEFAULT_IDX = LOAD_OPTS.index('CDS')
+	load_presses = ((LOAD_OPTS.index(load) - LOAD_DEFAULT_IDX) % len(LOAD_OPTS)
+		) if load in LOAD_OPTS else 0
+	# Release options are load-dependent (from the mod's carp_init_2 page).
+	rel_opts = {'CDS': ['NA', 'CRS', 'TOW'], 'HE': ['EXTR', 'TOW']}.get(load,
+		['NA', 'CRS', 'TOW'])
+	# CDS release toggle defaults to CRS (confirmed in-sim: CRS = 0 presses).
+	rel_default = 'CRS' if 'CRS' in rel_opts else rel_opts[0]
+	rel_default_idx = rel_opts.index(rel_default)
+	rel_presses = ((rel_opts.index(rel) - rel_default_idx) % len(rel_opts)
+		) if rel in rel_opts else 0
+	chute_lsk = {'G-12D': 'L1', 'G-12E': 'L2'}.get(chute, 'L1')
+	slots = ['L1', 'L2', 'L3', 'L4', 'L5', 'R1', 'R2', 'R3', 'R4', 'R5']
+
+	pushSeqCmd(0, '', '', 'C-130J CARP flow: PAYLOAD -> PI -> CARP INIT 2/5 load')
+
+	# =====================================================================
+	# PHASE 1 - PAYLOAD (WT+BAL): MC INDX -> L3 (WT+BAL) -> L4 (PAYLOAD)
+	# Each bundle: "<weight>//<station>" (// = airdrop) applied to the next LSK.
+	# =====================================================================
+	pushSeqCmd(1.0, 'scriptSpeech', f'Phase one. Loading {bundles} payload bundles.')
+	fkey('PLT_CNI_MC_INDX', 'MC INDX -> MSN CMPTR INDEX')
+	pushSeqCmd(0.8, '', '', 'Settle on MSN CMPTR INDEX')
+	lsk('L3', 'L3 -> WT + BAL')
+	pushSeqCmd(0.8, '', '', 'Settle on WT + BAL')
+	lsk('L4', 'L4 -> PAYLOAD')
+	pushSeqCmd(1.0, '', '', 'Settle on PAYLOAD')
+	# First Station is the AFTMOST (largest) station; the stick steps FORWARD
+	# (down) by Spacing so ALL bundles get entered for weight & balance.
+	if len(stations) < bundles:
+		pushSeqCmd(0.3, 'scriptSpeech',
+			f'Only {len(stations)} of {bundles} bundles fit forward of station '
+			f'{first}. Lower the First Station or Spacing.')
+	for i, station in enumerate(stations):
+		# Fast cadence for the (simple numeric) payload entry.
+		cni_type(f'{weight}//{station}',
+			f'Bundle {i + 1}: {weight}//{station} at {slots[i]}', dt=0.09, rel=0.05)
+		lsk(slots[i], f'Apply bundle {i + 1} at {slots[i]}', dt=0.25, rel=0.1)
+
+	# =====================================================================
+	# PHASE 2 - PI setup (user-confirmed flow). DOWNSELECT the drop waypoint with
+	# its RIGHT LSK on ACT LEGS -> opens that waypoint's WAYPOINT DATA page; then
+	# MFP> (R6) -> MISSIONS -> CARP 1 INIT> (R2) -> CARP INIT 1/5. Entering CARP
+	# INIT through the waypoint's data page this way ties the PI to that waypoint
+	# natively -- no scratchpad copy/paste (the earlier LEFT-LSK copy was wrong).
+	#   ACT LEGS: waypoint N is on the RIGHT LSK R{N} (LL02 = R2).
+	#   WAYPOINT DATA: MFP> = R6.  MISSIONS: CARP 1 INIT> = R2.
+	# =====================================================================
+	pushSeqCmd(1.0, 'scriptSpeech', f'Phase two. Point of impact from waypoint {carp_wp}.')
+	fkey('PLT_CNI_LEGS', 'LEGS -> ACT LEGS')
+	pushSeqCmd(1.0, '', '', 'Settle on ACT LEGS')
+	# Downselect the drop waypoint via its RIGHT LSK -> its WAYPOINT DATA page.
+	lsk(f'R{carp_wp}', f'Select {pi_ident} via R{carp_wp} -> WAYPOINT DATA')
+	pushSeqCmd(1.0, '', '', 'Settle on WAYPOINT DATA')
+	# MFP> (R6) -> MISSIONS.
+	lsk('R6', 'MFP> (R6) -> MISSIONS')
+	pushSeqCmd(1.0, '', '', 'Settle on MISSIONS')
+	# CARP 1 INIT> (R2) -> CARP INIT 1/5, PI already tied to the selected waypoint.
+	lsk('R2', 'CARP 1 INIT> (R2) -> CARP INIT 1/5')
+	pushSeqCmd(1.0, '', '', 'Settle on CARP INIT 1/5')
+
+	# --- 2b. RUN IN CRS (L5) from the ACT LEGS inbound leg course ---
+	# Read at build time from the CNI dump (CARP_PROBE_A/B). Requires being on the
+	# ACT LEGS page when Run is clicked; otherwise it's skipped gracefully.
+	# Still on CARP INIT 1/5 here (before the NEXT PAGE to 2/5).
+	runin = _runin_from_legs(config, carp_wp)
+	if runin is not None:
+		cni_type(f'{runin:03d}', f'RUN IN CRS {runin:03d} (LEGS leg to LL0{carp_wp})')
+		lsk('L5', 'Apply RUN IN CRS at L5')
+		pushSeqCmd(0.3, 'scriptSpeech', f'Run in course {runin:03d} from the leg.')
+	else:
+		pushSeqCmd(0.3, 'scriptSpeech',
+			'Run in course not read. Be on ACT LEGS when you run this.')
+
+	# --- 2c. CARP INIT 1/5 geometry (drop-zone dimensions). Still on 1/5. ---
+	# L3 LE-TE (yd), L4 SD DIST (NM), R3 LE-PI (yd), R4 TP DIST (NM),
+	# R5 DZ ESC (NM). The boxed mandatory fields the CARP needs to compute.
+	if geom == 'ON':
+		# TP DIST / SD DIST come from the dropdowns. NOTE: do NOT shrink TP DIST to
+		# the tiny WP1-leg distance -- that collapses the CARP's own run-in/pattern
+		# generation (the AUTO CARP). Alignment to the route comes from RUN IN CRS
+		# (set above from the LEGS leg course), which points the run-in down the
+		# WP1->drop bearing without breaking the auto pattern.
+		pushSeqCmd(0.5, 'scriptSpeech', 'Setting drop zone geometry.')
+		cni_type(le_te, f'LE-TE {le_te} yd')
+		lsk('L3', 'Apply LE-TE at L3')
+		cni_type(sd_dist, f'SD DIST {sd_dist} NM')
+		lsk('L4', 'Apply SD DIST at L4')
+		cni_type(tp_dist, f'TP DIST {tp_dist} NM')
+		lsk('R4', 'Apply TP DIST at R4')
+		cni_type(dz_esc, f'DZ ESC {dz_esc} NM')
+		lsk('R5', 'Apply DZ ESC at R5')
+		# LE-PI (R3) LAST, with a cleared scratchpad + settle. It was not landing
+		# when entered mid-block (a later field entry appears to clear it), so it
+		# goes after the others with a clean scratchpad so the value sticks.
+		for i in range(3):
+			pushSeqCmd(0.12, 'PLT_CNI_KBD_CLR', 1, ('Clear scratchpad before LE-PI' if i == 0 else ''))
+			pushSeqCmd(0.08, 'PLT_CNI_KBD_CLR', 0)
+		pushSeqCmd(0.5, '', '', 'Settle before LE-PI entry')
+		cni_type(le_pi, f'LE-PI {le_pi} yd')
+		lsk('R3', 'Apply LE-PI at R3')
+
+	# =====================================================================
+	# PHASE 3 - CARP INIT 2/5 load. NEXT PAGE from 1/5, then set the load.
+	#   L1 = load class (cycle)   R1 = FUS STA (first station)
+	#   R3 = ELEM WT/QTY (wt/cnt) R2 = RELEASE SYS (cycle)   L4 = CAS
+	#   R5 -> CHUTE LIST -> chute LSK -> L6 back -> L3 (number auto-gen)
+	#   R4 = DROP PAYLD auto-computes.
+	# =====================================================================
+	# CARP INIT 1/5 complete -> EXEC to save it, then advance to 2/5.
+	execkey('EXEC - save CARP INIT 1/5 (PI / run-in / geometry)')
+	pushSeqCmd(1.0, 'scriptSpeech', 'Page one saved. Phase three. Setting airdrop load.')
+	fkey('PLT_CNI_NEXT_PAGE', 'NEXT PAGE -> CARP INIT 2/5')
+	pushSeqCmd(1.0, '', '', 'Settle on CARP INIT 2/5')
+
+	# L1: load class (cycle from CDS default; CDS = 0 presses).
+	if load_presses > 0:
+		cycle('L1', load_presses,
+			f'L1 x{load_presses} -> {load} (from CDS default)')
+	# R1: FUS STA = the LARGEST (aftmost) fuselage station = the First Station,
+	# since the stick steps forward (down) from it. Bundles extract out the ramp
+	# aft-first, so the first to release is the highest station number. Uses the
+	# same station list built for the payload (max == First Station).
+	fus_sta = max(stations) if stations else first
+	cni_type(str(fus_sta),
+		f'FUS STA {fus_sta} (aftmost of {len(stations)} bundle stations)')
+	lsk('R1', 'Apply FUS STA at R1')
+	# R3: ELEM WT/QTY = weight/count.
+	cni_type(f'{weight}/{qty}', f'ELEM WT/QTY {weight}/{qty}')
+	lsk('R3', 'Apply ELEM WT/QTY at R3')
+	# R2: RELEASE SYS (VERIFY: assumes index-0 default of {rel_opts}).
+	if rel_presses > 0:
+		cycle('R2', rel_presses,
+			f'R2 x{rel_presses} -> {rel} from {rel_opts} [VERIFY]')
+	# L4: CAS (drop speed).
+	cni_type(cas, f'CAS {cas}')
+	lsk('L4', 'Apply CAS at L4')
+	# Chute: CHUTE LIST (R5) -> downselect -> back (L6) -> L3 (# auto-generates).
+	lsk('R5', 'R5 -> CHUTE LIST')
+	pushSeqCmd(1.0, '', '', 'Settle on CHUTE LIST')
+	lsk(chute_lsk, f'Downselect {chute} (assumed {chute_lsk}) [VERIFY]')
+	lsk('L6', 'L6 -> back to CARP INIT 2/5')
+	pushSeqCmd(0.8, '', '', 'Settle on CARP INIT 2/5')
+	lsk('L3', f'Apply CHUTE {chute} at L3 (# auto-generates)')
+
+	pushSeqCmd(1.0, 'scriptSpeech',
+		'CARP load set. Verify chute, element weight, and drop payload.')
+
+	# =====================================================================
+	# PHASE 4 - CARP INIT 3/5 winds + temperature.
+	# Winds: ALT W/V (L1) from LoGetVectorWindVelocity (aircraft-altitude wind --
+	# run at drop altitude); SFC W/V (L3) from DAM_SurfaceWind (true surface wind).
+	# Direction per 'Winds' var: FROM (met, default) or BLOWS-TO.
+	# Temperature: not in the export, so ALT TEMP (R1) = briefed Surface Temp minus
+	# ISA lapse (~2 C / 1000 ft) for the drop altitude (manual: R1 = drop-alt temp).
+	# SFC TEMP (R3) auto-populates, so we leave it.
+	# =====================================================================
+	alt_wind = _wind_from_export(config)                        # wind at aircraft alt
+	sfc_wind = _wind_from_export(config, 'DAM_SurfaceWind') or alt_wind
+	do_winds = (winds != 'OFF') and (alt_wind is not None)
+	# ALT TEMP by ISA lapse rate (2 C / 1000 ft) from the briefed surface temp.
+	alt_temp = sfc_tmp - round(2 * drop_ft / 1000.0)
+
+	def _wfmt(wnd):
+		fdir, spd, bto = wnd
+		wdir = fdir if winds == 'FROM' else bto
+		return f'{wdir:03d}/{spd:02d}', wdir, spd
+
+	# CARP INIT 2/5 complete -> EXEC to save it, then advance to 3/5.
+	execkey('EXEC - save CARP INIT 2/5 (load)')
+	pushSeqCmd(1.0, 'scriptSpeech',
+		f'Page two saved. Phase four. Winds and altitude temperature {alt_temp}.')
+	fkey('PLT_CNI_NEXT_PAGE', 'NEXT PAGE -> CARP INIT 3/5')
+	pushSeqCmd(1.0, '', '', 'Settle on CARP INIT 3/5')
+
+	# Winds (skip if OFF or no export data).
+	if do_winds:
+		alt_str, adir, aspd = _wfmt(alt_wind)
+		sfc_str, sdir, sspd = _wfmt(sfc_wind)
+		cni_type(alt_str, f'ALT W/V {alt_str} ({winds}) at L1')
+		lsk('L1', 'Apply ALT W/V at L1')
+		cni_type(sfc_str, f'SFC W/V {sfc_str} ({winds}) at L3')
+		lsk('L3', 'Apply SFC W/V at L3')
+	elif winds != 'OFF':
+		pushSeqCmd(0.3, 'scriptSpeech', 'No wind data in export; winds skipped.')
+
+	# ALT TEMP (R1). Negative temps use the +/- key (cni_type maps '-').
+	cni_type(str(alt_temp),
+		f'ALT TEMP {alt_temp}C (sfc {sfc_tmp} - lapse @ {drop_ft}ft) at R1')
+	lsk('R1', 'Apply ALT TEMP at R1')
+	pushSeqCmd(0.5, 'scriptSpeech',
+		'Winds and altitude temperature set. Verify page 3.')
+
+	# =====================================================================
+	# PHASE 5 - CARP INIT 4/5 drop altitude + elevations. NEXT PAGE from 3/5.
+	# Page layout (from the mod's carp_init_4.lua): L1 DROP ALT ref (QNH/PA),
+	# R1 DROP ALTITUDE, R3 PI ELEVATION, R4 OBSTR ELEV, R5 DZ ELEV, L5 MIN DROP HT.
+	# ORDER MATTERS: PI ELEVATION must be entered FIRST, then OBSTR (PI+10), then
+	# DZ (OBSTR+10) -- the page enforces PI <= OBSTR <= DZ, so an out-of-order or
+	# equal value gets rejected/clamped. DROP ALT + MIN DROP HT go after.
+	# =====================================================================
+	# CARP INIT 3/5 complete -> EXEC to save it, then advance to 4/5.
+	execkey('EXEC - save CARP INIT 3/5 (winds / temp)')
+	pushSeqCmd(1.0, 'scriptSpeech', 'Page three saved. Phase five. Drop altitude and elevations.')
+	fkey('PLT_CNI_NEXT_PAGE', 'NEXT PAGE -> CARP INIT 4/5')
+	pushSeqCmd(1.0, '', '', 'Settle on CARP INIT 4/5')
+	# L1: DROP ALT ref toggle (assume QNH default; PA = 1 press) [VERIFY default].
+	if drop_ref == 'PA':
+		cycle('L1', 1, 'L1 -> PA (from QNH default) [VERIFY]')
+	# --- Elevations first, in ascending order PI -> OBSTR -> DZ ---
+	# R3: PI ELEVATION (ft) = waypoint LEGS height. Entered first.
+	cni_type(pi_elev, f'PI ELEVATION {pi_elev} ft (from LEGS)')
+	lsk('R3', 'Apply PI ELEVATION at R3')
+	# R4: OBSTR ELEV (ft) = PI + 10.
+	cni_type(obstr_elev, f'OBSTR ELEV {obstr_elev} ft (PI + 10)')
+	lsk('R4', 'Apply OBSTR ELEV at R4')
+	# R5: DZ ELEVATION (ft) = OBSTR + 10 (= PI + 20).
+	cni_type(dz_elev, f'DZ ELEVATION {dz_elev} ft (OBSTR + 10)')
+	lsk('R5', 'Apply DZ ELEVATION at R5')
+	# --- Then drop altitude + min drop height ---
+	# R1: DROP ALTITUDE (ft) = the planned drop altitude.
+	cni_type(str(drop_ft), f'DROP ALTITUDE {drop_ft} ft')
+	lsk('R1', 'Apply DROP ALTITUDE at R1')
+	# L5: MIN DROP HT (ft).
+	cni_type(min_dh, f'MIN DROP HT {min_dh} ft')
+	lsk('L5', 'Apply MIN DROP HT at L5')
+	pushSeqCmd(0.5, 'scriptSpeech', 'Drop altitude and elevations set.')
+
+	# =====================================================================
+	# PHASE 6 - Final EXEC to save CARP INIT 4/5 (the last page). Every page is
+	# EXEC'd once complete, so this commits page 4 and finishes the profile.
+	# =====================================================================
+	execkey('EXEC - save CARP INIT 4/5 (drop alt / elevations)')
+	pushSeqCmd(0.5, 'scriptSpeech', 'Page four saved. CARP setup complete.')
+
+	# ---------------------------------------------------------------------
+	# NOTES / manual entries that remain:
+	#  - CARP INIT 3/5 altimeter (QNH) - not exported, enter manually.
+	#  - CARP INIT 4/5 RQD CLNC HT / OBSTR ELEV - only if there's an obstacle.
+	#  - VERIFY toggle defaults: L1 load (CDS ok), R2 release (CRS ok), 4/5 L1
+	#    drop-alt-ref default, and CHUTE LIST positions for G-12E.
+	# ---------------------------------------------------------------------
 	return seq

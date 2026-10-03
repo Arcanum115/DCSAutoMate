@@ -470,11 +470,17 @@ class DCSAutoMateApp:
 			frame = tk.Frame(self.varContainer, bg=theme['panel_bg'])
 			frame.pack(fill='x', pady=3)
 			tk.Label(frame, text=f'{varName}:', font=('Consolas', 9, 'bold'),
-				bg=theme['panel_bg'], fg=theme['labelframe_fg']).pack(side='left', padx=(0, 8))
-			var = tk.StringVar(value=setScriptVars.get(varName, options[0]))
-			for option in options:
-				rb = ttk.Radiobutton(frame, text=option, variable=var, value=option)
-				rb.pack(side='left', padx=4)
+				bg=theme['panel_bg'], fg=theme['labelframe_fg'], width=14, anchor='w').pack(side='left', padx=(0, 8))
+			# Keep the first option as the default (matches the old radio-button behavior).
+			savedValue = setScriptVars.get(varName, options[0])
+			if savedValue not in options:
+				savedValue = options[0]
+			var = tk.StringVar(value=savedValue)
+			# Width fits the longest option so the dropdown stays compact but readable.
+			comboWidth = max((len(str(o)) for o in options), default=4) + 2
+			combo = ttk.Combobox(frame, textvariable=var, values=list(options),
+				state='readonly', font=('Consolas', 9), width=comboWidth)
+			combo.pack(side='left', padx=4)
 			self.varControls[varName] = var
 			# Add a trace to save settings when an option changes
 			var.trace_add("write", lambda *args: self.onVarsRadioButtonChange(None))
@@ -849,6 +855,30 @@ class DCSAutoMateApp:
 			functionName = selectedScript['function']
 			scriptFunction = getattr(module[0], functionName) # This is the function in the script file that will be called to generate the sequence.  e.g. ColdStart(), HotStart(), Test(), etc.
 
+			# Snapshot the live DCSAutoMate export (LoGet* telemetry) so scripts can
+			# bake current values (wind, position, etc.) into the sequence at build
+			# time. Stored under config['DAMExportData']; empty dict if unavailable.
+			try:
+				with self.DAMExport.lock:
+					self.config['DAMExportData'] = dict(self.DAMExport.dataStorage)
+			except Exception:
+				self.config['DAMExportData'] = {}
+
+			# Snapshot key CNI dump strings (DCS-BIOS) so scripts can read the
+			# CURRENTLY-DISPLAYED CNI page at build time (e.g. the ACT LEGS leg
+			# courses for the CARP run-in). Empty/missing if unavailable.
+			try:
+				dcsbios = {}
+				for ctrl in ('C-130J/CARP_LEGS_CRS', 'C-130J/CARP_LEGS_ELEV', 'C-130J/CARP_PROBE_A', 'C-130J/CARP_PROBE_B'):
+					try:
+						if self.dbe.controlExists(ctrl):
+							dcsbios[ctrl] = self.dbe.getControlState(ctrl)[0][2]
+					except Exception:
+						pass
+				self.config['DCSBIOSData'] = dcsbios
+			except Exception:
+				self.config['DCSBIOSData'] = {}
+
 			seq = scriptFunction(self.config, vars)
 			self.outputBox.delete(1.0, tk.END)
 			self.stopFlag.clear()
@@ -862,7 +892,7 @@ class DCSAutoMateApp:
 			except:
 				pass
 
-			seqExe = seqExecute(self.root, self.config, self.dbe, self.updateOutput, self.stopFlag)
+			seqExe = seqExecute(self.root, self.config, self.dbe, self.updateOutput, self.stopFlag, self.DAMExport)
 			seqExe.execute(seq)
 			self.updateUIState()
 		except Exception as e:
@@ -884,12 +914,13 @@ class DCSAutoMateApp:
 # Seq must be a List of Dictionaries.  Each Dictionary must have {time, cmd, ...}, other keys are needed based on the command, see code.
 ######
 class seqExecute:
-	def __init__(self, root, config, dbe, updateOutput, stopFlag):
+	def __init__(self, root, config, dbe, updateOutput, stopFlag, dame=None):
 		self.root = root # The UI root object.  Needed to force updates during long loops to prevent Windows from thinking the app is frozen.
 		self.config = config
 		self.dbe = dbe
 		self.updateOutput = updateOutput # Callback function to send output to.
 		self.stopFlag = stopFlag
+		self.dame = dame # DCSAutoMateExportManager (LoGet* UDP export data); may be None.
 
 		self.inputSocket = self.getDcsInputSocket()
 
@@ -1093,6 +1124,10 @@ class seqExecute:
 					self.speak(speaker, arg)
 				elif cmd == 'scriptCockpitState':
 					self.handleScriptCockpitState(command)
+				elif cmd == 'scriptEcho':
+					self.handleScriptEcho(command, speaker)
+				elif cmd == 'scriptExportDump':
+					self.handleScriptExportDump(command)
 				elif cmd == 'scriptTimerStart' or cmd == 'scriptTimerEnd':
 					self.handleScriptTimer(command, timers)
 				elif cmd != '':
@@ -1243,6 +1278,84 @@ class seqExecute:
 
 		self.executedScriptKeyboardCommands += 1
 
+	def handleScriptExportDump(self, command):
+		"""
+		Dump the entire DCSAutoMate LoGet* export (from DCSAutoMateExport.lua) as
+		flattened "key = value" lines, so we can survey what's available. Reads
+		the export manager's dataStorage dict (updated ~1 Hz over UDP multicast).
+
+		command params:
+			msg    : optional label
+			filter : optional substring; only keys containing it are printed
+		"""
+		label = command.get('msg', '')
+		filt = command.get('filter', '')
+		if getattr(self, 'dame', None) is None:
+			self.updateOutput('scriptExportDump: export manager not available\n', flush=True)
+			return
+		data = {}
+		try:
+			with self.dame.lock:
+				data = dict(self.dame.dataStorage)
+		except Exception as e:
+			self.updateOutput(f'scriptExportDump: read error: {e}\n', flush=True)
+			return
+		if not data:
+			self.updateOutput('scriptExportDump: NO export data yet. Check that '
+				'DCSAutoMateExport.lua is wired into Export.lua and a mission is '
+				'running.\n', flush=True)
+			return
+
+		def flatten(d, prefix=''):
+			out = []
+			for k, v in d.items():
+				key = f'{prefix}{k}'
+				if isinstance(v, dict):
+					out.extend(flatten(v, key + '.'))
+				else:
+					out.append((key, v))
+			return out
+
+		flat = sorted(flatten(data))
+		if filt:
+			flat = [(k, v) for k, v in flat if filt.lower() in k.lower()]
+		hdr = f'--- DCSAutoMate export dump ({len(flat)} keys)'
+		hdr += f" filter='{filt}'" if filt else ''
+		if label:
+			hdr += f' [{label}]'
+		self.updateOutput(hdr + ' ---\n', flush=True)
+		for k, v in flat:
+			self.updateOutput(f'  {k} = {v}\n', flush=True)
+		self.updateOutput('--- end export dump ---\n', flush=True)
+
+	def handleScriptEcho(self, command, speaker=None):
+		"""
+		Read a control's CURRENT live value from the DCS-BIOS buffer and print it
+		(optionally speak it). Unlike scriptCockpitState this does NOT wait or gate
+		on a condition -- it is a one-shot read used to probe/inspect state.
+
+		command params:
+			arg     : the control to read, e.g. 'C-130J/CARP_PROBE_A'
+			msg     : optional label printed before the value
+			speak   : optional bool, if True the value is spoken via TTS
+		"""
+		control = command.get('arg', '')
+		label = command.get('msg', '')
+		sayIt = command.get('speak', False)
+		if not control:
+			self.updateOutput('scriptEcho: no control given\n', flush=True)
+			return
+		value = ''
+		if not self.config['debug']:
+			try:
+				value = self.dbe.getControlState(control)[0][2]
+			except Exception as e:
+				value = f'<read error: {e}>'
+		prefix = f'{label} ' if label else ''
+		self.updateOutput(f'ECHO {prefix}{control} = "{value}"', flush=True)
+		if sayIt and speaker is not None and not self.config['debug']:
+			self.speak(speaker, str(value))
+
 	def handleScriptCockpitState(self, command):
 		"""
 		This will start looping, watching the current control state.  When the control state meets the command condition and value, start a timer.  If the control state ever fails to meet the condition, reset the timer.  When the control value has been in the command condition for the duration, exit the loop.
@@ -1280,7 +1393,21 @@ class seqExecute:
 			if not self.config['debug']:
 				controlState = self.dbe.getControlState(control)[0][2]
 				# Cast the controlState to the correct type based on the value type.
-				controlState = int(controlState) if valueType == 'int' else str(controlState)
+				if valueType == 'int':
+					try:
+						controlState = int(controlState)
+					except (ValueError, TypeError):
+						# The DCS-BIOS string for this control has not been
+						# received yet (empty buffer before its first frame) or is
+						# momentarily non-numeric (e.g. an overhead LCD reading
+						# '---' or partial bytes during sensor init). Treat as
+						# "condition not met": reset the hold timer and keep
+						# polling instead of crashing on int('').
+						stateStartTime = None
+						self.root.update()
+						continue
+				else:
+					controlState = str(controlState)
 				#self.updateOutput(f'current controlState: {controlState}\n')
 
 				# If valueType is int, compare them with math operators.

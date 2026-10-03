@@ -453,6 +453,7 @@ class DCSAutoMateApp:
 
 		# Create the radio buttons and set them to some values based on the last used settings.
 		self.scriptVars = self.getScriptVars(self.scriptData, self.scriptName)
+		self.scriptVarDefaults = self.getScriptVarDefaults(self.scriptData, self.scriptName)
 		lastUsedVars = self.getLastUsedVars(self.moduleName, self.scriptName)
 		if lastUsedVars:
 			setScriptVars = lastUsedVars
@@ -471,10 +472,15 @@ class DCSAutoMateApp:
 			frame.pack(fill='x', pady=3)
 			tk.Label(frame, text=f'{varName}:', font=('Consolas', 9, 'bold'),
 				bg=theme['panel_bg'], fg=theme['labelframe_fg'], width=14, anchor='w').pack(side='left', padx=(0, 8))
-			# Keep the first option as the default (matches the old radio-button behavior).
-			savedValue = setScriptVars.get(varName, options[0])
+			# Default: last used value, then the script's 'varDefaults' entry (lets a
+			# script keep its option list sorted while defaulting mid-list), then the
+			# first option (the old radio-button behavior).
+			defaultValue = getattr(self, 'scriptVarDefaults', {}).get(varName, options[0])
+			if defaultValue not in options:
+				defaultValue = options[0]
+			savedValue = setScriptVars.get(varName, defaultValue)
 			if savedValue not in options:
-				savedValue = options[0]
+				savedValue = defaultValue
 			var = tk.StringVar(value=savedValue)
 			# Width fits the longest option so the dropdown stays compact but readable.
 			comboWidth = max((len(str(o)) for o in options), default=4) + 2
@@ -823,6 +829,14 @@ class DCSAutoMateApp:
 		for script in scriptData['scripts']:
 			if script['name'] == scriptName:
 				return script['vars']
+		return {}
+
+	def getScriptVarDefaults(self, scriptData, scriptName):
+		# Optional per-script {varName: defaultValue} map; scripts without one
+		# keep the first-option-is-default behavior.
+		for script in scriptData['scripts']:
+			if script['name'] == scriptName:
+				return script.get('varDefaults', {})
 		return {}
 
 	def getSelectedVars(self):

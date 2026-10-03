@@ -40,6 +40,9 @@ def getScriptData():
 			{
 				'name': 'BETA CARP Testing Required',
 				'function': 'CarpTest',
+				# Options lists stay in display order; varDefaults picks the
+				# initially-selected entry when it shouldn't be the first one.
+				'varDefaults': {'Surface Temp C': '20'},
 				'vars': {
 					# Full CARP flow: PAYLOAD (WT+BAL) -> PI setup -> CARP INIT 2/5
 					# load. No input popup in DCSAutoMate, so values are dropdowns;
@@ -75,7 +78,7 @@ def getScriptData():
 					# Temperature isn't in the export, so give the surface temp from
 					# the mission briefing; ALT TEMP is computed by lapse rate for the
 					# drop altitude. SFC TEMP auto-populates, so we leave it.
-					'Surface Temp C': ['20', '15', '10', '25', '30', '5', '0', '-5'],
+					'Surface Temp C': ['-5', '0', '5', '10', '15', '20', '25', '30'],
 					'Drop Alt ft': ['1000', '500', '800', '1250', '1500', '2000',
 						'2500', '5000', '10000'],
 					# --- CARP INIT 1/5 geometry (drop-zone dimensions) ---

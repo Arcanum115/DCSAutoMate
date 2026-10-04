@@ -42,7 +42,10 @@ def getScriptData():
 				'function': 'CarpTest',
 				# Options lists stay in display order; varDefaults picks the
 				# initially-selected entry when it shouldn't be the first one.
-				'varDefaults': {'Surface Temp C': '20'},
+				'varDefaults': {'Surface Temp C': '20', 'Spacing in': '60', 'CAS': '140'},
+				# Weight lb ea is a free-entry dropdown: pick a listed weight or
+				# type any custom per-bundle weight.
+				'varEditable': ['Weight lb ea'],
 				'vars': {
 					# Full CARP flow: PAYLOAD (WT+BAL) -> PI setup -> CARP INIT 2/5
 					# load. No input popup in DCSAutoMate, so values are dropdowns;
@@ -51,6 +54,8 @@ def getScriptData():
 					'CARP Waypoint': ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
 					# --- PAYLOAD (WT+BAL) bundles ---
 					'Bundles': ['4', '1', '2', '3', '5', '6'],
+					# Parachutes per container -> the "#" in CHUTE/# on CARP 2/5.
+					'Chutes': ['1', '2', '3', '4'],
 					'Weight lb ea': ['882', '300', '500', '1000', '1200', '1500',
 						'2000', '2200', '2500', '3000', '4000', '5000', '6000',
 						'7000', '8000', '9000', '10000', '11000', '12000', '13000',
@@ -63,13 +68,14 @@ def getScriptData():
 						'725', '705', '685', '665', '645', '625', '605', '585',
 						'565', '545', '525', '505', '485', '465', '445', '425',
 						'405', '385', '365', '345'],
-					'Spacing in': ['60', '48', '72', '90', '120'],
+					'Spacing in': ['0', '10', '20', '48', '60', '72', '90', '120'],
 					# --- CARP INIT 2/5 load ---
 					'Load': ['CDS', 'HE'],
 					# CRS is the standard CDS release (user: always CRS).
 					'Release Sys': ['CRS', 'TOW', 'NA', 'EXTR'],
 					'Chute': ['G-12D', 'G-12E'],
-					'CAS': ['140', '130', '150', '160', '170', '180', '200', '220', '250'],
+					'CAS': ['111', '120', '130', '140', '150', '160', '170', '180',
+					'190', '200', '210', '220', '230', '240', '250'],
 					# --- CARP INIT 3/5 winds (auto-filled from the live export) ---
 					# FROM = meteorological (default); BLOWS-TO = raw DCS direction.
 					# OFF = don't touch the wind fields.
@@ -1608,10 +1614,12 @@ def CarpTest(config, vars):
 			pushSeqCmd(0.6, f'PLT_CNI_LSK_{k}', 1, (msg if i == 0 else ''))
 			pushSeqCmd(0.25, f'PLT_CNI_LSK_{k}', 0)
 
-	def execkey(msg='EXEC - commit/save this CARP page'):
-		# Press EXEC to save the current CARP page's entries before advancing.
-		# Each page is EXEC'd once it's fully filled (page 1 complete -> EXEC ->
-		# page 2 ...), so nothing is lost when NEXT PAGE changes the display.
+	def execkey(msg='EXEC - commit/save the CARP route'):
+		# Press EXEC ONCE, on the final page (4/5), after every page is filled.
+		# The CNI holds pages 1-4 as a provisional/working route while NEXT PAGE
+		# just changes the display; data is not lost between pages, so a single
+		# EXEC at the end commits the whole CARP. (Per-page EXEC was removed --
+		# user confirmed it was unnecessary and only the final 4/5 EXEC is needed.)
 		pushSeqCmd(0.6, 'PLT_CNI_EXEC', 1, msg)
 		pushSeqCmd(0.3, 'PLT_CNI_EXEC', 0)
 		pushSeqCmd(0.6, '', '', 'Settle after EXEC')
@@ -1628,6 +1636,7 @@ def CarpTest(config, vars):
 	load    = vars.get('Load', 'CDS')
 	rel     = vars.get('Release Sys', 'CRS')
 	chute   = vars.get('Chute', 'G-12D')
+	chutes  = str(vars.get('Chutes', '1'))          # parachutes per container (# in CHUTE/#)
 	cas     = str(vars.get('CAS', '140'))
 	winds   = vars.get('Winds', 'FROM')             # FROM / BLOWS-TO / OFF
 	sfc_tmp = int(vars.get('Surface Temp C', '20')) # surface temp from briefing
@@ -1664,8 +1673,14 @@ def CarpTest(config, vars):
 	load_presses = ((LOAD_OPTS.index(load) - LOAD_DEFAULT_IDX) % len(LOAD_OPTS)
 		) if load in LOAD_OPTS else 0
 	# Release options are load-dependent (from the mod's carp_init_2 page).
-	rel_opts = {'CDS': ['NA', 'CRS', 'TOW'], 'HE': ['EXTR', 'TOW']}.get(load,
-		['NA', 'CRS', 'TOW'])
+	# NOTE: the manual (p.299) lists only TOW/EXTR for CDS/HE, but the Anubis mod
+	# actually shows THREE for CDS: TOW / CRS / NA. These lists are in the mod's
+	# real CYCLE order (each R2 press advances one slot, wrapping), NOT screen
+	# left-to-right order. Confirmed in-sim from the CRS default: one press -> NA,
+	# two presses -> TOW (so TOW = 2 presses). STAGE does NOT gate this -- RELEASE
+	# SYS is available for any CDS/HE load regardless of STAGE (1 is fine).
+	rel_opts = {'CDS': ['CRS', 'NA', 'TOW'], 'HE': ['EXTR', 'TOW']}.get(load,
+		['CRS', 'NA', 'TOW'])
 	# CDS release toggle defaults to CRS (confirmed in-sim: CRS = 0 presses).
 	rel_default = 'CRS' if 'CRS' in rel_opts else rel_opts[0]
 	rel_default_idx = rel_opts.index(rel_default)
@@ -1769,16 +1784,46 @@ def CarpTest(config, vars):
 	#   R5 -> CHUTE LIST -> chute LSK -> L6 back -> L3 (number auto-gen)
 	#   R4 = DROP PAYLD auto-computes.
 	# =====================================================================
-	# CARP INIT 1/5 complete -> EXEC to save it, then advance to 2/5.
-	execkey('EXEC - save CARP INIT 1/5 (PI / run-in / geometry)')
-	pushSeqCmd(1.0, 'scriptSpeech', 'Page one saved. Phase three. Setting airdrop load.')
+	# Advance to 2/5 (NO per-page EXEC -- pages are committed by a single EXEC on
+	# 4/5 at the very end; see PHASE 6). The provisional route holds 1-4 meanwhile.
+	pushSeqCmd(1.0, 'scriptSpeech', 'Phase three. Setting airdrop load.')
 	fkey('PLT_CNI_NEXT_PAGE', 'NEXT PAGE -> CARP INIT 2/5')
 	pushSeqCmd(1.0, '', '', 'Settle on CARP INIT 2/5')
 
+	# --- STAGE unlock (MUST be first, before touching any other 2/5 field) ---
+	# BUG WORKAROUND (user-confirmed): if STAGE (L2) is left at its default of 1,
+	# the CARP INIT 2/5 page locks and other fields -- notably RELEASE SYS (R2) --
+	# won't change (it stays stuck on CRS). The page must be toggled 1 -> 2 -> 1
+	# to unlock, ENDING on STAGE 1 (single-pass drop).
+	#
+	# It is the SAME LSK (L2) toggled twice. The earlier failure was the two
+	# presses landing too close together (the second got debounced/lost, leaving
+	# STAGE stuck on 2). Fix (user-specified): press L2 to set STAGE 2, WAIT 5
+	# SECONDS, then press L2 again to set STAGE 1. The long gap guarantees both
+	# presses register. Ends on STAGE 1 (single-pass drop).
+	def stage_press(label):
+		pushSeqCmd(0.7, 'PLT_CNI_LSK_L2', 1, label)
+		pushSeqCmd(0.35, 'PLT_CNI_LSK_L2', 0)
+	stage_press('STAGE 1 -> 2 (unlock, press 1 of 2)')
+	# NB: pushSeqCmd halves dt (CARP_SPEED=0.5), so pass 5/CARP_SPEED for a TRUE 5 s.
+	pushSeqCmd(5.0 / CARP_SPEED, '', '', 'Wait 5 s between STAGE presses so both register')
+	stage_press('STAGE 2 -> 1 (press 2 of 2) -- ends on STAGE 1')
+	pushSeqCmd(0.8, '', '', 'Settle after STAGE unlock')
+
+	# --- Set the toggles FIRST, before any typed field (user: "set the type
+	# before we change anything"). Load type (L1) then RELEASE SYS (R2) -- doing
+	# RELEASE SYS here, right after the unlock, is what makes it come off CRS. ---
 	# L1: load class (cycle from CDS default; CDS = 0 presses).
 	if load_presses > 0:
 		cycle('L1', load_presses,
 			f'L1 x{load_presses} -> {load} (from CDS default)')
+	# R2: RELEASE SYS. CDS cycle order CRS->NA->TOW confirmed in-sim (TOW=2 presses
+	# from the CRS default); HE (EXTR/TOW) still [VERIFY]. Set right after the STAGE
+	# unlock so the page is freshly unlocked when it's cycled.
+	if rel_presses > 0:
+		cycle('R2', rel_presses,
+			f'R2 x{rel_presses} -> {rel} from cycle {rel_opts}'
+			+ ('' if load == 'CDS' else ' [VERIFY HE order]'))
 	# R1: FUS STA = the LARGEST (aftmost) fuselage station = the First Station,
 	# since the stick steps forward (down) from it. Bundles extract out the ramp
 	# aft-first, so the first to release is the highest station number. Uses the
@@ -1790,20 +1835,22 @@ def CarpTest(config, vars):
 	# R3: ELEM WT/QTY = weight/count.
 	cni_type(f'{weight}/{qty}', f'ELEM WT/QTY {weight}/{qty}')
 	lsk('R3', 'Apply ELEM WT/QTY at R3')
-	# R2: RELEASE SYS (VERIFY: assumes index-0 default of {rel_opts}).
-	if rel_presses > 0:
-		cycle('R2', rel_presses,
-			f'R2 x{rel_presses} -> {rel} from {rel_opts} [VERIFY]')
 	# L4: CAS (drop speed).
 	cni_type(cas, f'CAS {cas}')
 	lsk('L4', 'Apply CAS at L4')
-	# Chute: CHUTE LIST (R5) -> downselect -> back (L6) -> L3 (# auto-generates).
+	# Chute TYPE: CHUTE LIST (R5) -> downselect -> back (L6) -> L3 applies it.
 	lsk('R5', 'R5 -> CHUTE LIST')
 	pushSeqCmd(1.0, '', '', 'Settle on CHUTE LIST')
 	lsk(chute_lsk, f'Downselect {chute} (assumed {chute_lsk}) [VERIFY]')
 	lsk('L6', 'L6 -> back to CARP INIT 2/5')
 	pushSeqCmd(0.8, '', '', 'Settle on CARP INIT 2/5')
-	lsk('L3', f'Apply CHUTE {chute} at L3 (# auto-generates)')
+	lsk('L3', f'Apply CHUTE {chute} at L3')
+	# Chute COUNT: the "#" in CHUTE/# (parachutes per container). The field is
+	# "type/#", so the number is entered with a leading slash (e.g. "/2") to set
+	# just the count. Default 1 = single chute (standard CDS).
+	if chutes and chutes != '1':
+		cni_type(f'/{chutes}', f'Chute count /{chutes}')
+		lsk('L3', f'Apply chute count /{chutes} at L3 (# in CHUTE/#)')
 
 	pushSeqCmd(1.0, 'scriptSpeech',
 		'CARP load set. Verify chute, element weight, and drop payload.')
@@ -1828,10 +1875,9 @@ def CarpTest(config, vars):
 		wdir = fdir if winds == 'FROM' else bto
 		return f'{wdir:03d}/{spd:02d}', wdir, spd
 
-	# CARP INIT 2/5 complete -> EXEC to save it, then advance to 3/5.
-	execkey('EXEC - save CARP INIT 2/5 (load)')
+	# Advance to 3/5 (no EXEC -- single commit on 4/5 at the end).
 	pushSeqCmd(1.0, 'scriptSpeech',
-		f'Page two saved. Phase four. Winds and altitude temperature {alt_temp}.')
+		f'Phase four. Winds and altitude temperature {alt_temp}.')
 	fkey('PLT_CNI_NEXT_PAGE', 'NEXT PAGE -> CARP INIT 3/5')
 	pushSeqCmd(1.0, '', '', 'Settle on CARP INIT 3/5')
 
@@ -1861,9 +1907,8 @@ def CarpTest(config, vars):
 	# DZ (OBSTR+10) -- the page enforces PI <= OBSTR <= DZ, so an out-of-order or
 	# equal value gets rejected/clamped. DROP ALT + MIN DROP HT go after.
 	# =====================================================================
-	# CARP INIT 3/5 complete -> EXEC to save it, then advance to 4/5.
-	execkey('EXEC - save CARP INIT 3/5 (winds / temp)')
-	pushSeqCmd(1.0, 'scriptSpeech', 'Page three saved. Phase five. Drop altitude and elevations.')
+	# Advance to 4/5 (no EXEC -- single commit on 4/5 at the end).
+	pushSeqCmd(1.0, 'scriptSpeech', 'Phase five. Drop altitude and elevations.')
 	fkey('PLT_CNI_NEXT_PAGE', 'NEXT PAGE -> CARP INIT 4/5')
 	pushSeqCmd(1.0, '', '', 'Settle on CARP INIT 4/5')
 	# L1: DROP ALT ref toggle (assume QNH default; PA = 1 press) [VERIFY default].
@@ -1889,11 +1934,12 @@ def CarpTest(config, vars):
 	pushSeqCmd(0.5, 'scriptSpeech', 'Drop altitude and elevations set.')
 
 	# =====================================================================
-	# PHASE 6 - Final EXEC to save CARP INIT 4/5 (the last page). Every page is
-	# EXEC'd once complete, so this commits page 4 and finishes the profile.
+	# PHASE 6 - SINGLE EXEC on the final page (4/5), after ALL data on pages 1-4
+	# has been entered. This one EXEC commits the whole provisional CARP route
+	# (user: only press execute on 4/5 once everything's in).
 	# =====================================================================
-	execkey('EXEC - save CARP INIT 4/5 (drop alt / elevations)')
-	pushSeqCmd(0.5, 'scriptSpeech', 'Page four saved. CARP setup complete.')
+	execkey('EXEC - commit the whole CARP route (pages 1-4) from 4/5')
+	pushSeqCmd(0.5, 'scriptSpeech', 'Execute. CARP route committed. Setup complete.')
 
 	# ---------------------------------------------------------------------
 	# NOTES / manual entries that remain:

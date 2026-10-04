@@ -232,10 +232,16 @@ class DCSAutoMateApp:
 			justify='left', anchor='w')
 		self.realtimeDataLabel.pack(fill='x')
 
+		# Output region — the console, plus an optional CARP plan-view pane that
+		# sits beside it (shown only when a CARP script is selected).
+		self.outputRow = tk.Frame(rightPanel)
+		self.outputRow.pack(fill='both', expand=True)
+
 		# Output console
-		outputPanel = tk.LabelFrame(rightPanel, text=' OUTPUT CONSOLE ', font=('Consolas', 9, 'bold'),
+		outputPanel = tk.LabelFrame(self.outputRow, text=' OUTPUT CONSOLE ', font=('Consolas', 9, 'bold'),
 			padx=4, pady=4)
-		outputPanel.pack(fill='both', expand=True)
+		self.outputPanel = outputPanel
+		outputPanel.pack(side='top', fill='both', expand=True)
 
 		scrollbarY = tk.Scrollbar(outputPanel, orient='vertical', width=12)
 		scrollbarX = tk.Scrollbar(outputPanel, orient='horizontal', width=12)
@@ -249,6 +255,20 @@ class DCSAutoMateApp:
 		scrollbarX.pack(side='bottom', fill='x')
 		self.outputBox.configure(font=('Consolas', 10), wrap='word', tabs=('1c', '6c'))
 		self.outputBox.pack(fill='both', expand=True)
+
+		# CARP plan-view pane: the run-in / drop-zone lookdown diagram with its
+		# terms listed beneath it. Hidden until a CARP script is selected
+		# (showCarpPane packs it, splitting the output area in half).
+		self.carpPanel = tk.LabelFrame(self.outputRow, text=' CARP — PLAN VIEW ',
+			font=('Consolas', 9, 'bold'), padx=4, pady=4)
+		self.carpCanvas = tk.Canvas(self.carpPanel, highlightthickness=0, borderwidth=0)
+		self.carpCanvas.pack(side='top', fill='both', expand=True)
+		self.carpTerms = tk.Text(self.carpPanel, height=13, wrap='word',
+			borderwidth=0, highlightthickness=0, padx=8, pady=6,
+			font=('Consolas', 9), state='disabled')
+		self.carpTerms.pack(side='bottom', fill='x')
+		self.carpCanvas.bind('<Configure>', lambda e: self.drawCarpPlan())
+		self._carpVisible = False
 
 		# Configure grid weights
 		self.root.grid_rowconfigure(2, weight=1)
@@ -328,6 +348,15 @@ class DCSAutoMateApp:
 		# Style output box
 		self.outputBox.config(bg=theme['output_bg'], fg=theme['output_fg'],
 			insertbackground=theme['accent'])
+
+		# Style the CARP plan-view pane (kept on the dark nav palette like the console)
+		if hasattr(self, 'carpCanvas'):
+			self.carpCanvas.config(bg=theme['output_bg'])
+		if hasattr(self, 'carpTerms'):
+			self.carpTerms.config(bg=theme['output_bg'])
+		if getattr(self, '_carpVisible', False):
+			self.populateCarpTerms()
+			self.drawCarpPlan()
 
 		self.root.config(bg=theme['bg'])
 
@@ -454,6 +483,7 @@ class DCSAutoMateApp:
 		# Create the radio buttons and set them to some values based on the last used settings.
 		self.scriptVars = self.getScriptVars(self.scriptData, self.scriptName)
 		self.scriptVarDefaults = self.getScriptVarDefaults(self.scriptData, self.scriptName)
+		self.scriptVarEditable = self.getScriptVarEditable(self.scriptData, self.scriptName)
 		lastUsedVars = self.getLastUsedVars(self.moduleName, self.scriptName)
 		if lastUsedVars:
 			setScriptVars = lastUsedVars
@@ -462,6 +492,118 @@ class DCSAutoMateApp:
 		self.updateScriptVarsRadioButtons(self.scriptVars, setScriptVars)
 
 		self.onVarsRadioButtonChange(None)
+
+		# Show the CARP plan-view diagram beside the console for CARP scripts.
+		self.showCarpPane('CARP' in (self.scriptName or ''))
+
+	def showCarpPane(self, show):
+		# Pack/unpack the CARP plan-view pane so it splits the output area in half.
+		if not hasattr(self, 'carpPanel'):
+			return
+		if show and not self._carpVisible:
+			# Stack vertically: plan-view pane on top, console beneath it.
+			self.carpPanel.pack(side='top', fill='both', expand=True, pady=(0, 8),
+				before=self.outputPanel)
+			self._carpVisible = True
+			self.populateCarpTerms()
+			self.carpCanvas.after(60, self.drawCarpPlan)
+		elif not show and self._carpVisible:
+			self.carpPanel.pack_forget()
+			self._carpVisible = False
+
+	def populateCarpTerms(self):
+		# The glossary strip beneath the diagram: term (green) + plain meaning.
+		if not hasattr(self, 'carpTerms'):
+			return
+		theme = self.getTheme()
+		t = self.carpTerms
+		t.config(state='normal', bg=theme['output_bg'], fg='#9fb0c0')
+		t.delete('1.0', 'end')
+		t.tag_configure('hd', foreground='#f0a84a', font=('Consolas', 9, 'bold'))
+		t.tag_configure('term', foreground='#4ade80', font=('Consolas', 9, 'bold'))
+		rows = [
+			('TP', 'turn point — roll onto the run-in heading'),
+			('SD', 'slowdown — decelerate to drop speed (CAS)'),
+			('CARP', 'computed release point / green light'),
+			('PI', 'point of impact — the aim point'),
+			('LE / TE', 'leading / trailing edge of the drop zone'),
+			('LE-TE', 'drop-zone length, in yards'),
+			('LE-PI', 'leading edge to the PI, in yards'),
+			('TP DIST', 'distance to the turn point, in NM'),
+			('SD DIST', 'distance to the slowdown point, in NM'),
+			('RUN IN CRS', 'heading flown across the DZ'),
+			('DZ ESC', 'escape leg past the zone, in NM'),
+		]
+		t.insert('end', 'TERMS\n', 'hd')
+		for term, desc in rows:
+			t.insert('end', f'{term:<11}', 'term')
+			t.insert('end', f' {desc}\n')
+		t.config(state='disabled')
+
+	def drawCarpPlan(self):
+		# Lookdown schematic of the CARP run-in and drop zone, scaled to fit the
+		# pane. Logical coordinates are a 920x470 box (same layout as the web
+		# reference); everything is transformed to the live canvas size.
+		if not getattr(self, '_carpVisible', False) or not hasattr(self, 'carpCanvas'):
+			return
+		c = self.carpCanvas
+		W = c.winfo_width(); H = c.winfo_height()
+		if W < 24 or H < 24:
+			return
+		theme = self.getTheme()
+		BG = theme['output_bg']
+		FG = '#cdd9e5'; MUT = '#5c6b7a'
+		CNI = '#4ade80'; PATH = '#f0a84a'; ZONE = '#5bb6d8'
+		c.config(bg=BG)
+		c.delete('all')
+		LW, LH, pad = 920.0, 470.0, 10
+		s = min((W - 2 * pad) / LW, (H - 2 * pad) / LH)
+		ox = (W - LW * s) / 2.0; oy = (H - LH * s) / 2.0
+		def X(x): return ox + x * s
+		def Y(y): return oy + y * s
+		fs = max(8, int(11 * s)); fsm = max(7, int(9 * s))
+		def txt(x, y, text, fill, anchor='center', size=fs, bold=True):
+			c.create_text(X(x), Y(y), text=text, fill=fill, anchor=anchor,
+				font=('Consolas', size, 'bold' if bold else 'normal'))
+		# run-in axis
+		c.create_line(X(110), Y(250), X(884), Y(250), fill=PATH, dash=(6, 4),
+			width=2, arrow='last', arrowshape=(10, 12, 4))
+		txt(205, 237, 'RUN-IN', PATH, size=fsm)
+		# inbound leg into the turn point
+		c.create_line(X(34), Y(436), X(110), Y(436), X(110), Y(250),
+			fill=PATH, width=2, smooth=True)
+		txt(40, 452, 'INBOUND', PATH, anchor='w', size=fsm)
+		# drop zone
+		c.create_rectangle(X(560), Y(196), X(728), Y(304), outline=ZONE, width=2)
+		c.create_line(X(560), Y(196), X(560), Y(304), fill=ZONE, width=3)
+		c.create_line(X(728), Y(196), X(728), Y(304), fill=ZONE, width=3)
+		txt(552, 186, 'LE', ZONE, anchor='e'); txt(736, 186, 'TE', ZONE, anchor='w')
+		txt(568, 214, 'DZ', ZONE, anchor='w', size=fsm)
+		# points on the run-in
+		for px, lbl in ((110, 'TP'), (300, 'SD'), (460, 'CARP'), (624, 'PI')):
+			rel = (lbl == 'CARP')
+			r = 6 if rel else 4
+			oc = PATH if rel else FG
+			fc = PATH if rel else BG
+			c.create_oval(X(px) - r, Y(250) - r, X(px) + r, Y(250) + r,
+				outline=oc, fill=fc, width=2)
+		txt(110, 231, 'TP', FG); txt(300, 231, 'SD', FG)
+		txt(460, 223, 'CARP', PATH); txt(624, 231, 'PI', FG)
+		txt(812, 237, 'DZ ESC', PATH, size=fsm)
+		# dimension lines
+		def dim(x1, x2, y, lbl, below):
+			c.create_line(X(x1), Y(y), X(x2), Y(y), fill=MUT, width=1)
+			c.create_line(X(x1), Y(y - 5), X(x1), Y(y + 5), fill=MUT, width=1)
+			c.create_line(X(x2), Y(y - 5), X(x2), Y(y + 5), fill=MUT, width=1)
+			txt((x1 + x2) / 2.0, y + (15 if below else -10), lbl, CNI, size=fsm)
+		dim(560, 728, 168, 'LE-TE', False)
+		dim(560, 624, 330, 'LE-PI', True)
+		dim(300, 460, 372, 'SD DIST', True)
+		dim(110, 460, 410, 'TP DIST', True)
+		# wind
+		c.create_line(X(712), Y(52), X(628), Y(104), fill=MUT, width=1,
+			arrow='last', arrowshape=(8, 10, 3))
+		txt(720, 46, 'WIND', MUT, anchor='w', size=fsm)
 
 	def updateScriptVarsRadioButtons(self, scriptVars, setScriptVars):
 		for widget in self.varContainer.winfo_children():
@@ -472,6 +614,9 @@ class DCSAutoMateApp:
 			frame.pack(fill='x', pady=3)
 			tk.Label(frame, text=f'{varName}:', font=('Consolas', 9, 'bold'),
 				bg=theme['panel_bg'], fg=theme['labelframe_fg'], width=14, anchor='w').pack(side='left', padx=(0, 8))
+			# Editable vars (script's 'varEditable' list) render as a combobox the
+			# user can also TYPE a custom value into; the rest stay readonly dropdowns.
+			isEditable = varName in getattr(self, 'scriptVarEditable', set())
 			# Default: last used value, then the script's 'varDefaults' entry (lets a
 			# script keep its option list sorted while defaulting mid-list), then the
 			# first option (the old radio-button behavior).
@@ -479,13 +624,16 @@ class DCSAutoMateApp:
 			if defaultValue not in options:
 				defaultValue = options[0]
 			savedValue = setScriptVars.get(varName, defaultValue)
-			if savedValue not in options:
+			# A readonly var must sit on one of its options; an editable one keeps
+			# whatever custom value the user last typed.
+			if not isEditable and savedValue not in options:
 				savedValue = defaultValue
 			var = tk.StringVar(value=savedValue)
 			# Width fits the longest option so the dropdown stays compact but readable.
 			comboWidth = max((len(str(o)) for o in options), default=4) + 2
 			combo = ttk.Combobox(frame, textvariable=var, values=list(options),
-				state='readonly', font=('Consolas', 9), width=comboWidth)
+				state=('normal' if isEditable else 'readonly'),
+				font=('Consolas', 9), width=comboWidth)
 			combo.pack(side='left', padx=4)
 			self.varControls[varName] = var
 			# Add a trace to save settings when an option changes
@@ -838,6 +986,14 @@ class DCSAutoMateApp:
 			if script['name'] == scriptName:
 				return script.get('varDefaults', {})
 		return {}
+
+	def getScriptVarEditable(self, scriptData, scriptName):
+		# Optional per-script list of var names the user may type a custom value
+		# into (rendered as editable comboboxes instead of readonly dropdowns).
+		for script in scriptData['scripts']:
+			if script['name'] == scriptName:
+				return set(script.get('varEditable', []))
+		return set()
 
 	def getSelectedVars(self):
 		if self.varControls:

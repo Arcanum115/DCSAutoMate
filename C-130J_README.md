@@ -9,6 +9,7 @@ DCSAutoMate script for the Anubis Productions C-130J-30 module.
 | **Cold Start** | `Time` = `Day` \| `Night`<br>`External Power` = `No` \| `Yes` | Full cold start following the in-game checklist. ~5 minute runtime. |
 | **Shutdown** | — | Bring the aircraft back to cold and dark, including a transient APU + bleed cycle so generators have load while engines stop. |
 | **Test: Engine Switch Click** | `Direction` = `1` (right) \| `0` (left) | Debug helper. Sends a single relative click to all four engine start switches so you can verify the control wiring without running a full start. |
+| **BETA CARP Testing Required** | Drop waypoint, bundle count / weight / station / spacing, chutes, load + release type, parachute, drop speed, drop altitude + reference, minimum drop height, drop-zone geometry, wind entry mode, surface temp | Beta. Fills the `PAYLOAD (WT+BAL)` page and all four `CARP INIT` pages for a Computed Air Release Point airdrop, then commits with a single `EXEC`. Reads winds, elevations and run-in course back out of the aircraft. **Requires both export lines in `Export.lua`** — see the [CARP section in the main README](README.md#carp-airdrop-automation-beta). |
 
 ## Cold Start - what it does
 

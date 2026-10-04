@@ -4,9 +4,11 @@ Python scripting engine for DCS World, using DCS-BIOS to drive cockpit controls.
 
 > **Fork notice — [Arcanum115](https://github.com/Arcanum115)**
 >
-> This fork adds full **Cold Start**, **Shutdown**, and an **Engine Switch Click**
-> debug helper for the Anubis Productions **C-130J-30** module. The C-130J
-> integration is **working but WIP** — refinements ongoing.
+> This fork adds full **Cold Start**, **Shutdown**, an **Engine Switch Click**
+> debug helper, and **CARP airdrop automation (beta)** for the Anubis Productions
+> **C-130J-30** module. The C-130J integration is **working but WIP** —
+> refinements ongoing. See [CARP airdrop automation](#carp-airdrop-automation-beta)
+> for what the CARP flow does and what it needs.
 >
 > Companion DCS-BIOS additions live at
 > [`Arcanum115/dcs-bios`](https://github.com/Arcanum115/dcs-bios). Both repos
@@ -30,15 +32,34 @@ Python scripting engine for DCS World, using DCS-BIOS to drive cockpit controls.
 3. **Install DCS-BIOS** into `C:\Users\<username>\Saved Games\DCS\Scripts\`.
    Full instructions in the
    [dcs-bios README](https://github.com/Arcanum115/dcs-bios#installation).
-4. **Edit `Export.lua`** in that same `Scripts\` folder (create it if it
-   doesn't exist) and add:
+4. **Copy `DCSAutoMateExport.lua`** (from the DCSAutoMate folder you just
+   extracted) into that same `C:\Users\<username>\Saved Games\DCS\Scripts\`
+   folder, next to where `Export.lua` lives.
+5. **Edit `Export.lua`** in that `Scripts\` folder (create it if it doesn't
+   exist) and make sure it contains **both** of these lines, in this order:
    ```
    dofile(lfs.writedir() .. [[Scripts\DCS-BIOS\BIOS.lua]])
+   dofile(lfs.writedir()..[[Scripts\DCSAutoMateExport.lua]])
    ```
-5. **Launch `DCSAutoMate.exe`**, pick the **Script File** (e.g. `C-130J`),
+   **Append** these — don't replace the file, or you'll remove the hooks for
+   your other mods and tools. If you already have other export hooks, keep
+   them and leave the DCSAutoMate line **last**.
+6. **Launch `DCSAutoMate.exe`**, pick the **Script File** (e.g. `C-130J`),
    pick a **Script** (`Cold Start`, `Shutdown`, etc.), set the **Options**
    (Day/Night, External Power), alt-tab into DCS, press **START**, and
    sit back.
+
+> [!IMPORTANT]
+> **Both export lines are required.** DCS-BIOS reads and drives the cockpit,
+> but it does not export mission weather. `DCSAutoMateExport.lua` is what
+> supplies the live **wind and pressure** data, which the CARP flow needs to
+> fill in the `CARP INIT 3/5` wind fields. Without the second line the Cold
+> Start and Shutdown scripts still run, but CARP cannot auto-fill the winds.
+>
+> The DCSAutoMate line goes **last** because it chains the previously
+> registered export handler — it saves and calls whatever was registered
+> before it (DCS-BIOS, TheWay, and so on) before doing its own send, so
+> loading it last does not clobber the other hooks.
 
 > [!Important]
 > Upstream `DCS-Skunkworks/dcs-bios` and the older DCSFlightpanels fork will
@@ -53,9 +74,21 @@ Python scripting engine for DCS World, using DCS-BIOS to drive cockpit controls.
 
 * **Module / Script selector** — choose the aircraft script file
   (e.g. `C-130J`), then pick a specific script (`Cold Start`, `Shutdown`, …).
-* **Per-script options** — each script can declare its own variables (radio
-  buttons / dropdowns) shown automatically. C-130J Cold Start exposes
-  `Time` (Day / Night) and `External Power` (No / Yes).
+* **Per-script options** — each script can declare its own variables
+  (dropdowns) shown automatically. C-130J Cold Start exposes `Time`
+  (Day / Night) and `External Power` (No / Yes).
+* **Free-entry options** — a script can mark individual options as editable
+  (`varEditable`), rendering them as a dropdown you can also **type into**.
+  The CARP flow uses this for `Weight lb ea`, so you can pick a listed bundle
+  weight or enter any custom one.
+* **Mid-list defaults** — a script can declare `varDefaults` to pre-select an
+  option that isn't the first in the list, so option lists stay sorted for
+  reading while still defaulting to the sensible value.
+* **CARP plan-view pane** — selecting a CARP script opens a lookdown diagram
+  beside the console showing the run-in and drop zone (turn point, slowdown,
+  release point, point of impact, leading/trailing edges, dimension lines and
+  wind), with a glossary of the terms underneath. It scales to the pane and
+  follows the light/dark theme.
 * **Start / Stop controls** — large buttons to run or abort the current
   script.
 * **Status indicator** — `READY` / `RUNNING` / `STOPPED` badge in the
@@ -79,6 +112,7 @@ Python scripting engine for DCS World, using DCS-BIOS to drive cockpit controls.
 | Module | Scripts | Status |
 |-|-|-|
 | C-130J-30 (Anubis) | Cold Start (Day/Night, External Power), Shutdown, Test: Engine Switch Click | 🚧 WIP — added in this fork |
+| C-130J-30 (Anubis) | **BETA CARP Testing Required** — full CARP airdrop entry, see [below](#carp-airdrop-automation-beta) | 🧪 Beta — added in this fork |
 | All upstream modules (A-10C, F-16C, F-14, F/A-18C, AH-64D, F-15E, F-4E, M-2000C, Ka-50, Mi-24P, Mi-8MTV2, OH-58D, UH-1H, AJS-37, AV-8B, A-4E, C-101, F-5E, F-86F) | as shipped by [SlipHavoc/DCSAutoMate](https://github.com/SlipHavoc/DCSAutoMate) | ✅ unchanged |
 
 ### What the C-130J Cold Start does
@@ -127,6 +161,110 @@ don't affect DCS mission readiness. Runtime is roughly five minutes.
   `FADEC_GUARD_*`, `PLT_MASTER_CAUTION`, `PLT_CNI_INDX`,
   `CPLT_CNI_BRT_ROCKER`, and the overhead-LCD string outputs (`APU_NG`,
   `BLEED_AIR_PRESSURE`, etc.)
+
+---
+
+## CARP airdrop automation (BETA)
+
+> [!WARNING]
+> **This is beta and under active development.** It drives a long sequence of
+> CNI-MU keypresses, and a single mistimed press can leave the page part-filled.
+> Run it on the ground or in a quiet part of the flight first, watch the output
+> console as it goes, and check every CARP page before you trust the solution.
+> Known rough edges are listed [below](#known-rough-edges).
+
+### What CARP is
+
+**CARP** stands for **Computed Air Release Point** — the point in space where
+cargo has to leave the aircraft so that it lands on the drop zone. It is not the
+same as the target: a bundle released directly over the drop zone will overshoot,
+because it keeps the aircraft's forward momentum and then drifts under its
+parachute. Working out the release point means accounting for ground speed, drop
+altitude, the wind through the drop, and how that particular parachute and load
+behave.
+
+In the C-130J the crew programs this on the **CNI-MU**, across the `CARP INIT`
+pages — the point of impact, the run-in course, drop zone dimensions, load type
+and parachute, drop speed, the winds and temperature. The avionics then compute
+the release point and drive the green light for the loadmaster.
+
+Entering all of that by hand is a lot of keypresses on a lot of pages. This
+script does the entry for you.
+
+### What the script does
+
+Pick **`BETA CARP Testing Required`** as the script for the `C-130J` file. It
+runs the whole flow in one pass:
+
+| Phase | Page | What it enters |
+| --- | --- | --- |
+| 1 | `PAYLOAD (WT+BAL)` | Each bundle as `weight//station` (the double slash marks it as an airdrop), stepping forward from the aftmost station by your chosen spacing. This is a prerequisite for CARP. |
+| 2 | `CARP INIT 1/5` | Copies your chosen drop waypoint in as the point of impact, then the drop-zone geometry — leading-to-trailing-edge length, leading-edge-to-PI offset, slowdown and turn-point distances, and the escape leg. |
+| 3 | `CARP INIT 2/5` | Load class, fuselage station, element weight and quantity, release system, parachute type and count, and drop speed. |
+| 4 | `CARP INIT 3/5` | Winds and temperature. |
+| 5 | `CARP INIT 4/5` | Drop altitude and reference, PI and DZ elevations, minimum drop height. |
+| 6 | `CARP INIT 4/5` | A **single `EXEC`** at the very end, which commits the whole route. Pages 1–4 are held as a provisional route while `NEXT PAGE` just changes the display, so nothing is lost between pages. |
+
+### What it works out for you
+
+Rather than making you type values you'd have to look up, the script reads them
+back out of the aircraft and the mission:
+
+- **Winds** come from the live export. `FROM` enters them meteorologically (the
+  direction the wind is coming from, the usual convention), `BLOWS-TO` enters the
+  raw DCS direction, and `OFF` leaves the wind fields alone.
+- **Altitude temperature** is computed from the surface temperature you give it,
+  by lapse rate, for your drop altitude. Surface temperature itself auto-populates
+  on the page, so the only thing you supply is the briefed surface temp.
+- **PI and DZ elevation** are pulled from the selected waypoint's own height on
+  the `ACT LEGS` page, so they are not dropdowns at all.
+- **Run-in course** is read from the waypoint's inbound leg, so the CARP run-in
+  lines up with the leg you actually planned rather than a heading you type.
+- **Drop payload** auto-computes from the element weight and quantity, and the
+  parachute count auto-generates.
+
+### What you set
+
+The option list covers the drop itself: which waypoint is the PI, how many
+bundles and what each weighs (free-entry, so any weight works), the first
+fuselage station and the spacing between bundles, chutes per container, load and
+release type, parachute model, drop speed, drop altitude and reference, minimum
+drop height, the drop-zone dimensions, and how the winds should be entered.
+
+While a CARP script is selected, the **plan-view pane** opens beside the output
+console with a lookdown diagram of the run-in and drop zone — turn point,
+slowdown point, computed release point, point of impact, the leading and trailing
+edges, the dimension lines and the wind — with a short glossary of each term
+underneath.
+
+### Requirements
+
+- Everything in the [C-130J requirements](#requirements) above, plus:
+- **Both export lines in `Export.lua`** — see [Quick start](#quick-start) step 5.
+  DCS-BIOS does not export mission weather, so without `DCSAutoMateExport.lua`
+  the wind fields cannot be auto-filled.
+- **The drop waypoint must already be in the flight plan**, with its elevation,
+  before you run the script — that is where the PI, the elevations and the run-in
+  course are read from. Loading the flight plan with a tool such as TheWay is
+  fine; the script only reads what the CNI-MU is showing.
+- The matching **`Arcanum115/dcs-bios`** fork, which provides the CNI-MU string
+  outputs the script reads back.
+
+### Known rough edges
+
+- **`CARP INIT 2/5` needs unlocking.** If `STAGE` is left at its default the page
+  locks and other fields — notably `RELEASE SYS` — will not change. The script
+  toggles `STAGE` 1 → 2 → 1 with a deliberate 5-second gap so both presses
+  register, ending back on `STAGE 1` for a single-pass drop. The gap is why that
+  part of the run looks slow.
+- **`RELEASE SYS` cycle order is confirmed for `CDS` only** (`CRS` → `NA` → `TOW`,
+  verified in-sim). The `HE` order (`EXTR` / `TOW`) is still unverified.
+- **Parachute list positions are assumed** — `G-12D` first, `G-12E` second.
+  `G-12E` is untested.
+- The flow is built against the DCS C-130J manual and a CARP walkthrough, but
+  cockpit mod updates can move CNI fields. If a page fills in wrongly, note which
+  page was displayed and what landed in which field, and
+  [open an issue](https://github.com/Arcanum115/DCSAutoMate/issues).
 
 ---
 

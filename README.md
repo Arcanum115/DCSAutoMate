@@ -1,6 +1,8 @@
 # DCSAutoMate 2.0 Fork
 Python scripting engine for DCS World.
 
+> **Kudos to the original developers:** DCSAutoMate was created by [SlipHavoc](https://github.com/SlipHavoc), and nearly all of what makes it work is their design and hard work.  This fork only builds on it.  Please support their work: star and follow the original repo at [SlipHavoc/DCSAutoMate](https://github.com/SlipHavoc/DCSAutoMate), and report bugs and send contributions upstream where they apply.  Thank you, SlipHavoc!
+
 > **Fork notice:** this is [Arcanum115](https://github.com/Arcanum115)'s fork of [SlipHavoc's DCSAutoMate](https://github.com/SlipHavoc/DCSAutoMate), based on DCSAutoMate 2.0.0.  It adds:
 > * **F-4E:** once the INS is aligned, both cold starts set weapon select to BOMBS, jettison select to STORES, the reticle to 40 mils and the formation lights on.  Jester sets the radar to active and 25 NM wide, the jammer to transmit and chaff/flares to single, and takes over countermeasures dispensing.
 > * **C-130J Cold Start:** APU to RUN right after battery on, a faster ECB reset, and all four engines started together with the throttles held at ground idle.  Also full defensive systems setup, RWR volume, computer drop switch, ARC-210, exterior lighting by day or night, both CNI-MUs and the pilot AMU display layout.  The pilot HUD stays caged.
@@ -14,6 +16,17 @@ This is intended to replace the existing built-in autostart scripts in DCS, whic
 DCSAutoMate can also be used to script any other cockpit commands, such as adding waypoints or setting countermeasures programs.
 
 > **Note on DCS BIOS:** Older versions of DCSAutoMate required [the DCS BIOS fork for DCS Flightpanels](https://github.com/DCSFlightpanels/dcs-bios) as a command channel.  That dependency has been removed.  DCS BIOS is no longer required or used.
+
+> **Updating from a legacy version (1.x, which used DCS BIOS):**
+> 1. Delete the `DCS-BIOS` folder from `C:\Users\<username>\Saved Games\DCS\Scripts`.  (Keep it if another program, such as DCS Flightpanels, Helios or a Stream Deck plugin, still uses it.)
+> 2. Open `Export.lua` in that same folder and remove these two lines:
+>
+>    ```lua
+>    dofile(lfs.writedir()..[[Scripts\DCS-BIOS\BIOS.lua]])
+>    dofile(lfs.writedir()..[[Scripts\DCSAutoMateExport.lua]])
+>    ```
+>
+>    You can also delete the old `Scripts\DCSAutoMateExport.lua` file.  DCSAutoMate 2.0 installs its own export script to `Scripts\DCSAutoMate\` and adds its own include line on first run.
 
 # How to use this program
 

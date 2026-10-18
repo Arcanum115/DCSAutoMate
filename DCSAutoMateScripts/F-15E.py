@@ -204,8 +204,8 @@ def ColdStart(config, vars, helper, *args, **kwargs):
 		# External lights:
 		# Anti-collision light
 		pushSeqCmd(dt, 'EXTLT.anticoll_lt_sw', 0)
-		# Formation lights
-		pushSeqCmd(dt, 'EXTLT.formation_lt_knob', 0)
+		# Formation lights ... BRT (fork change)
+		pushSeqCmd(dt, 'EXTLT.formation_lt_knob', 6) # 0 = OFF ... 6 = BRT
 		# Position lights
 		pushSeqCmd(dt, 'EXTLT.pos_lt_knob', 0)
 		# Tail flood lights
@@ -240,8 +240,8 @@ def ColdStart(config, vars, helper, *args, **kwargs):
 		# External lights:
 		# Anti-collision light
 		pushSeqCmd(dt, 'EXTLT.anticoll_lt_sw', 0)
-		# Formation lights
-		pushSeqCmd(dt, 'EXTLT.formation_lt_knob', 0)
+		# Formation lights ... BRT (fork change)
+		pushSeqCmd(dt, 'EXTLT.formation_lt_knob', 6) # 0 = OFF ... 6 = BRT
 		# Position lights
 		pushSeqCmd(dt, 'EXTLT.pos_lt_knob', 0)
 		# Tail flood lights
@@ -582,8 +582,8 @@ def ColdStart(config, vars, helper, *args, **kwargs):
 	pushSeqCmd(dt, 'TEWS.rwr_power_sw', 1)
 	# EWWS switch ... ON (right console middle, behind right hand controller)
 	pushSeqCmd(dt, 'TEWS.ewss_power_sw', 1)
-	# CMD MODE knob ... SEMIAUTO (right console middle)
-	pushSeqCmd(dt, 'EWS_CMD.cmd_mode_knob', 3) # 0 = OFF, 1 = STBY, 2 = MAN ONLY, 3 = SEMIAUTO, 4 = AUTO
+	# CMD MODE knob ... AUTO (right console middle)
+	pushSeqCmd(dt, 'EWS_CMD.cmd_mode_knob', 4) # AUTO (fork change; upstream used SEMIAUTO).  0 = OFF, 1 = STBY, 2 = MAN ONLY, 3 = SEMIAUTO, 4 = AUTO
 
 	# Left MFCD
 	pressMfdButtons('rear', 'leftColor', [
@@ -629,6 +629,10 @@ def ColdStart(config, vars, helper, *args, **kwargs):
 	# NOTE Should be done after INS alignement is complete.
 	# BRAKEHOLD switch ... OFF (right lower instrument panel)
 	pushSeqCmd(dt, 'LGS.park_brake_sw', 0)
+
+	# VMAX switch ... ON (fork change).  The guard is left open: closing it would push the switch back off.
+	pushSeqCmd(dt, 'DEEC.vmax_cover', 1) # Guard ... open
+	pushSeqCmd(dt, 'DEEC.vmax_sw', 1) # VMAX ... ON
 
 	pushSeqCmd(dt, 'scriptSpeech', "Manual steps remaining: Set up armament page.  Set laser code.  Set lights.  Tune radios.")
 

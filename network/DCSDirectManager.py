@@ -5,6 +5,7 @@ import socket
 import threading
 import time
 
+from network.customReads import evaluateCustomRead, isCustomControl, loadCustomControls, mergeCustomControls
 from utils.appPaths import appBaseDir
 
 TELEMETRY_MODULE = 'telemetry'
@@ -197,7 +198,8 @@ class DCSDirectManager:
 				continue
 			mappings[moduleName] = data
 
-		return mappings
+		# Fork addition: computed controls from config/customControls/ (see network/customReads.py).
+		return mergeCustomControls(mappings, loadCustomControls(os.path.join(appBaseDir(), 'config')))
 
 	def _buildControlIndex(self):
 		"""Build a controlIndex dict for O(1) control lookups.
@@ -587,6 +589,21 @@ class DCSDirectManager:
 		if result is not None and result != 'null':
 			return self._parseIndication(result)
 		return None
+
+	def queryIndicationRaw(self, indicationId, timeout=2.0):
+		"""list_indication(indicationId) as the raw text DCS returned (not split into fields), or None on timeout.  Used by custom computed controls."""
+		result = self._queryWithResponse(f'T:{indicationId}', f'T:{indicationId}', timeout)
+		if result is None or result == 'null':
+			return None
+		try:
+			text = json.loads(result)
+		except (json.JSONDecodeError, TypeError):
+			text = result
+		return text if isinstance(text, str) else None
+
+	def readCustomControl(self, control, timeout=1.0):
+		"""A custom computed control's value; '' if its display couldn't be read."""
+		return evaluateCustomRead(control, self.queryIndicationRaw(control['customRead']['indicationId'], timeout=timeout))
 
 	def queryTelemetry(self, functionName, timeout=1.0):
 		"""Call a LoGet* export function in DCS (e.g. 'LoGetEngineInfo') and return its decoded result, or None."""
@@ -1157,7 +1174,10 @@ class DCSDirectManager:
 
 			description = control.get('description', controlName)
 
-			if 'indicationId' in control and 'fieldName' in control:
+			if isCustomControl(control):
+				results.append((controlRef, description, self.readCustomControl(control)))
+
+			elif 'indicationId' in control and 'fieldName' in control:
 				# Query indication text via TCP.
 				indicationId = control['indicationId']
 				fieldName = control['fieldName']
@@ -1220,6 +1240,7 @@ class DCSDirectManager:
 		indicationRefs = []
 		metadataRefs = []
 		telemetryRefs = {}  # functionName -> [(controlRef, path)], so each LoGet* function is queried once.
+		customRefs = []  # (controlRef, control) for custom computed controls.
 		for controlRef in refs:
 			telemetry = parseTelemetryRef(controlRef)
 			if telemetry:
@@ -1234,6 +1255,9 @@ class DCSDirectManager:
 				moduleName, controlName = None, controlRef
 			control = self._lookupControl(controlName, moduleName)
 			if not control:
+				continue
+			if isCustomControl(control):
+				customRefs.append((controlRef, control))
 				continue
 			if 'indicationId' in control:
 				indicationRefs.append((controlRef, control))
@@ -1282,6 +1306,15 @@ class DCSDirectManager:
 					results.append((controlRef, description, value))
 				else:
 					results.append((controlRef, description, ''))
+
+		# --- Custom computed refs: one raw T: query per indicator, shared by every custom control that parses it. ---
+		rawByIndicator = {}
+		for controlRef, control in customRefs:
+			indicationId = control['customRead']['indicationId']
+			if indicationId not in rawByIndicator:
+				rawByIndicator[indicationId] = self.queryIndicationRaw(indicationId, timeout=0.5)
+			description = control.get('description', controlRef.split('/', 1)[-1])
+			results.append((controlRef, description, evaluateCustomRead(control, rawByIndicator[indicationId])))
 
 		# --- Metadata module-name ref. ---
 		for controlRef in metadataRefs:

@@ -13,13 +13,13 @@ import re
 from engine.simCommands import isCommsMenuCommand
 
 KEYBOARD_COMMAND = 'scriptKeyboard'
-_indicationPattern = re.compile(r'^(?:[^/]+/)?ind\.')
+_indicationPattern = re.compile(r'^(?:[^/]+/)?(?:ind|custom)\.')  # custom. controls (fork addition) are parsed from display text too.
 _loopTypes = (ast.For, ast.AsyncFor, ast.While)
 _scopeTypes = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
 def isIndicationControl(control):
-	"""True for ind. controls ('ind.3.AlignTime' or 'A-10C_2/ind.3.AlignTime'), which only update while the cockpit is shown."""
+	"""True for ind. and custom. controls ('ind.3.AlignTime' or 'A-10C_2/ind.3.AlignTime'), which only update while the cockpit is shown."""
 	return isinstance(control, str) and bool(_indicationPattern.match(control))
 
 

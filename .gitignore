@@ -8,7 +8,6 @@ output/
 __init__.py
 
 DCSAutoMateLog.txt
-DCSAutoMate.spec
 DCSAutoMate.exe
 DCSAutoMate.zip
 DCSAutoMate-*.zip

@@ -6,11 +6,12 @@ import json
 import os
 import sys
 
+from network.customReads import CUSTOM_CONTROLS_DIR, loadCustomControls, mergeCustomControls
 from utils.appPaths import appBaseDir
 
 MODULES_FILE = 'modules.js'
 STAMP_FILE = 'sources.json'
-_knownKeys = {'arg', 'argLim', 'bindings', 'commandId', 'crewAccess', 'decrementValue', 'description', 'deviceId', 'elementName', 'fieldName', 'incrementValue', 'indicationId', 'indicatorArgLim', 'positionMap', 'positions', 'sendProtocol', 'step', 'type'}
+_knownKeys = {'arg', 'argLim', 'bindings', 'commandId', 'crewAccess', 'customRead', 'decrementValue', 'description', 'deviceId', 'elementName', 'fieldName', 'incrementValue', 'indicationId', 'indicatorArgLim', 'positionMap', 'positions', 'sendProtocol', 'step', 'type'}
 
 
 def _number(value):
@@ -69,6 +70,10 @@ def _positionCommands(positionMap):
 def _details(control):
 	controlType = control.get('type')
 	parts = []
+	customRead = control.get('customRead')
+	if isinstance(customRead, dict):
+		options = ', '.join(f'{key} {_number(value)}' for key, value in customRead.items() if key not in ('parser', 'indicationId'))
+		parts.append(f"computed from indicator {customRead.get('indicationId')} by {customRead.get('parser')}" + (f' ({options})' if options else ''))
 	if 'indicationId' in control:
 		parts.append(f"indicator {control['indicationId']}")
 	if 'fieldName' in control:
@@ -116,7 +121,9 @@ def controlRows(controls):
 			indicatorNames[name] = control.get('description', '').replace(' (all fields)', '')
 	rows = []
 	for name, control in controls.items():
-		if name.startswith('ind.'):
+		if name.startswith('custom.'):
+			group, kind, controlType = 'custom', 'custom', 'computed (read only)'
+		elif name.startswith('ind.'):
 			indicator = '.'.join(name.split('.')[:2])
 			group, kind, controlType = f'{indicator} {indicatorNames.get(indicator, "")}'.strip(), 'ind', 'display text'
 		elif name.startswith('arg.'):
@@ -146,8 +153,15 @@ def _mappingFiles(mappingsDir):
 	return files
 
 
+def _customDir(mappingsDir):
+	return os.path.join(os.path.dirname(mappingsDir), CUSTOM_CONTROLS_DIR)
+
+
 def _sourceStamps(mappingsDir):
 	stamps = {name: os.path.getmtime(path) for name, path in _mappingFiles(mappingsDir).items()}
+	# Fork addition: a changed custom controls file rebuilds its module's data too.
+	for name, path in _mappingFiles(_customDir(mappingsDir)).items():
+		stamps[f'_custom/{name}'] = os.path.getmtime(path)
 	# A changed generator rebuilds the data; when packaged, the code lives in a fresh temp folder each launch, so the exe dates it.
 	stamps['_generator'] = os.path.getmtime(sys.executable if getattr(sys, 'frozen', False) else __file__)
 	return stamps
@@ -176,18 +190,20 @@ def buildControlReference(mappingsDir, outputDir):
 	stamps = _sourceStamps(mappingsDir)
 	os.makedirs(outputDir, exist_ok=True)
 	modules = []
+	customControls = loadCustomControls(os.path.dirname(mappingsDir))
 	for fileName, path in sorted(_mappingFiles(mappingsDir).items(), key=lambda item: item[0].lower()):
 		with open(path, encoding='utf-8') as f:
 			mapping = json.load(f)
 		# Same rule as DCSDirectManager: only <moduleName>.json is a module's mapping.
 		if mapping.get('moduleName', fileName) != fileName:
 			continue
+		mergeCustomControls({fileName: mapping}, {fileName: customControls.get(fileName, {})})
 		rows = controlRows(mapping.get('controls', {}))
 		_writeScript(os.path.join(outputDir, f'{fileName}.js'), f'window.controlReferenceData[{json.dumps(fileName)}] = ', rows)
 		modules.append({'name': fileName, 'count': len(rows)})
 	for oldName in (_readStamps(outputDir) or {}):
 		oldPath = os.path.join(outputDir, f'{oldName}.js')
-		if oldName not in stamps and os.path.isfile(oldPath):
+		if oldName not in stamps and not oldName.startswith('_') and os.path.isfile(oldPath):
 			os.remove(oldPath)
 	_writeScript(os.path.join(outputDir, MODULES_FILE), 'window.controlReferenceModules = ', modules)
 	with open(os.path.join(outputDir, STAMP_FILE), 'w', encoding='utf-8') as f:

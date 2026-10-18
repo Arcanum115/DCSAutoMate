@@ -1,0 +1,55 @@
+{
+	"moduleName": "C-130J-30",
+	"controls": {
+		"custom.APU_NG": {
+			"description": "APU NG / Gas Generator RPM (%), 0 while the display shows dashes (was DCS-BIOS APU_NG)",
+			"customRead": {
+				"parser": "numericLcd",
+				"indicationId": 33,
+				"length": 3
+			}
+		},
+		"custom.BLEED_AIR_PRESSURE": {
+			"description": "Bleed Air Pressure Indicator (was DCS-BIOS BLEED_AIR_PRESSURE)",
+			"customRead": {
+				"parser": "lcdLine",
+				"indicationId": 35,
+				"length": 3
+			}
+		},
+		"custom.CARP_LEGS_CRS": {
+			"description": "Pilot CNI ACT LEGS inbound leg course per waypoint, 'LL01=008;LL02=012;' (only while ACT LEGS is shown; was DCS-BIOS CARP_LEGS_CRS)",
+			"customRead": {
+				"parser": "legsCourse",
+				"indicationId": 8
+			}
+		},
+		"custom.CARP_LEGS_ELEV": {
+			"description": "Pilot CNI ACT LEGS waypoint elevation in ft ASL per waypoint, 'LL01=1;LL02=568;' (only while ACT LEGS is shown; was DCS-BIOS CARP_LEGS_ELEV)",
+			"customRead": {
+				"parser": "legsElevation",
+				"indicationId": 8
+			}
+		},
+		"custom.CARP_PROBE_A": {
+			"description": "Pilot CNI element dump 'ordinal=value;' for elements 1-24, max 150 chars (was DCS-BIOS CARP_PROBE_A)",
+			"customRead": {
+				"parser": "ordinalDump",
+				"indicationId": 8,
+				"first": 1,
+				"last": 24,
+				"maxLength": 150
+			}
+		},
+		"custom.CARP_PROBE_B": {
+			"description": "Pilot CNI element dump 'ordinal=value;' for elements 25-55, max 150 chars (was DCS-BIOS CARP_PROBE_B)",
+			"customRead": {
+				"parser": "ordinalDump",
+				"indicationId": 8,
+				"first": 25,
+				"last": 55,
+				"maxLength": 150
+			}
+		}
+	}
+}

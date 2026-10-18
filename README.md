@@ -17,18 +17,19 @@ DCSAutoMate can also be used to script any other cockpit commands, such as addin
 
 > **Note on DCS BIOS:** Older versions of DCSAutoMate required [the DCS BIOS fork for DCS Flightpanels](https://github.com/DCSFlightpanels/dcs-bios) as a command channel.  That dependency has been removed.  DCS BIOS is no longer required or used.
 
-> **Updating from a legacy version (1.x, which used DCS BIOS):**
-> 1. Delete the `DCS-BIOS` folder from `C:\Users\<username>\Saved Games\DCS\Scripts`.  (Keep it if another program, such as DCS Flightpanels, Helios or a Stream Deck plugin, still uses it.)
-> 2. Open `Export.lua` in that same folder and remove these two lines:
->
->    ```lua
->    dofile(lfs.writedir()..[[Scripts\DCS-BIOS\BIOS.lua]])
->    dofile(lfs.writedir()..[[Scripts\DCSAutoMateExport.lua]])
->    ```
->
->    You can also delete the old `Scripts\DCSAutoMateExport.lua` file.  DCSAutoMate 2.0 installs its own export script to `Scripts\DCSAutoMate\` and adds its own include line on first run.
-
 # How to use this program
+
+**Updating from a legacy version (1.x, which used DCS BIOS)**
+
+1. Delete the `DCS-BIOS` folder from `C:\Users\<username>\Saved Games\DCS\Scripts`.  (Keep it if another program, such as DCS Flightpanels, Helios or a Stream Deck plugin, still uses it.)
+2. Open `Export.lua` in that same folder and remove these two lines:
+
+   ```lua
+   dofile(lfs.writedir()..[[Scripts\DCS-BIOS\BIOS.lua]])
+   dofile(lfs.writedir()..[[Scripts\DCSAutoMateExport.lua]])
+   ```
+
+   You can also delete the old `Scripts\DCSAutoMateExport.lua` file.  DCSAutoMate 2.0 installs its own export script to `Scripts\DCSAutoMate\` and adds its own include line on first run.
 
 **Installation and setup**
 

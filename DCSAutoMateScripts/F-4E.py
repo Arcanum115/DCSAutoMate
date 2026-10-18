@@ -153,6 +153,41 @@ def int16(mult = 1):
 	int16 = 65535
 	return int(mult * int16)
 
+# Fork addition: combat setup shared by both cold starts, run once the INS is aligned and Jester is present (his commands need him).
+def pushCombatSetup(pushSeqCmd, dt):
+	# Weapon Selector knob ... BOMBS.  The knob's index order isn't the manual's list order (index 2 is TV); 7 = BOMBS was confirmed in-sim.
+	pushSeqCmd(dt, 'WEAPONS.WEAPONS_SelectWeapon', 7)
+	# Selective Jettison knob ... STORES (the down detent).  4 = STORES was confirmed in-sim.  Only pre-selects; PUSH TO JETT is never pressed.
+	pushSeqCmd(dt, 'WEAPONS.WEAPONS_Jettison_Selection_Knob', 4)
+
+	# Jester: radar active, 25 NM wide scan, jammer transmitting, chaff and flares single.  Pressed like the alignment command (1, then 0 to reset); 1 s apart so he acknowledges each.
+	pushSeqCmd(dt, 'scriptSpeech', 'Setting up Jester for combat.')
+	for jesterCommand in ['RADAR_OPERATION_ACTIVE', 'RADAR_RANGE_25_WIDE', 'SYSTEMS_JAMMER_TRANSMIT', 'SYSTEMS_CHAFF_MODE_SINGLE', 'SYSTEMS_FLARE_MODE_SINGLE']:
+		pushSeqCmd(1, f'JESTER_WHEEL.JESTER_COMMAND_{jesterCommand}', 1)
+		pushSeqCmd(dt, f'JESTER_WHEEL.JESTER_COMMAND_{jesterCommand}', 0)
+
+	# Jester controls countermeasures dispensing.  There's no direct Jester command for this, so drive the wheel: Crew Contract (6) > Countermeasures Dispensing (4), a Manual/Jester selector.
+	# From a cold start the selector is on Manual, so one step clockwise (E) lands on Jester, then W selects it.
+	def jesterWheel(control, msg):
+		pushSeqCmd(dt, f'JESTER_WHEEL.{control}', 1)
+		pushSeqCmd(dt, f'JESTER_WHEEL.{control}', 0)
+		pushSeqCmd(1, '', '', msg)
+	pushSeqCmd(dt, 'scriptSpeech', 'Jester, take over countermeasures.')
+	jesterWheel('PILOT_JESTER_UI_ACTION', 'Open the Jester wheel (A)')
+	jesterWheel('PILOT_JESTER_OPTION_NAV_HOME', 'Wheel to the main menu, wherever it was left')
+	jesterWheel('PILOT_JESTER_OPTION_6', 'Crew Contract')
+	jesterWheel('PILOT_JESTER_OPTION_4', 'Countermeasures Dispensing')
+	jesterWheel('PILOT_JESTER_OPTION_RIGHT', 'Manual > Jester (E)')
+	# Selecting closes the wheel by itself (confirmed in-sim).  Don't hold A afterwards: on a closed wheel that opens it again.
+	jesterWheel('PILOT_JESTER_OPTION_CENTER', 'Select Jester (W)')
+
+	# Sight reticle depression ... 40 mils.  Calibrated in-sim: the knob is linear at about 245 mils full scale, so 40 / 245 = 0.164.
+	pushSeqCmd(dt, 'HUD_AN_ASG_26.HUD_AdjustReticle', 0.164)
+
+	# Formation lights ... ON, full brightness.  The mode switch is 3-position (0 = down, spring-loaded; 0.5 = middle; 1.0 = up); position 2 sends 1.0 (up), the same click DCS BIOS sent.
+	pushSeqCmd(dt, 'EXTERIOR_LIGHTS.PILOT_RIGHT_WALL_FORMATION_LIGHTS_MODE_SWITCH', 2)
+	pushSeqCmd(dt, 'EXTERIOR_LIGHTS.PILOT_RIGHT_WALL_FORMATION_LIGHTS_BRIGHTNESS_KNOB', 1)
+
 def Test(config, vars, helper, *args, **kwargs):
 	seq = []
 	dt = 0.3
@@ -485,6 +520,9 @@ def ColdStartWithJester(config, vars, helper, *args, **kwargs):
 	pushSeqCmd(dt, '', '', 'Wait for Jester to finish talking.')
 	pushSeqCmd(7, '', '', 'Finished')
 	pushSeqCmd(dt, 'scriptSpeech', "Alignment complete.")
+
+	# Combat setup once the INS is aligned (fork addition).
+	pushCombatSetup(pushSeqCmd, dt)
 
 	# Reference System switch ... PRIM
 	pushSeqCmd(dt, 'ADI_ARU_11_A.MAINADI_reference_absolute', 0) # 0 = PRIM, 1 = STBY
@@ -824,6 +862,9 @@ def ColdStartNoJester(config, vars, helper, *args, **kwargs):
 	pushSeqCmd(dt, 'JESTER_WHEEL.JESTER_COMMAND_CREW_PRESENCE_AUTO', 1)
 	pushSeqCmd(dt, 'JESTER_WHEEL.JESTER_COMMAND_CREW_PRESENCE_AUTO', 0)
 	pushSeqCmd(dt, 'scriptSpeech', 'Jester enabled.')
+	# Combat setup (fork addition); give Jester a moment to come back first.
+	pushSeqCmd(3, '', '', 'Wait for Jester to be back.')
+	pushCombatSetup(pushSeqCmd, dt)
 	# Jester, radar to active.
 	#pushSeqCmd(dt, 'F-4E/PLT_JESTER_COMMAND_RADAR_OPERATION_ACTIVE', 'TOGGLE')
 	# Jester, radar auto-focus on.

@@ -22,7 +22,7 @@ def sm():
 
 class TestGetModules:
 	def test_getModuleGivesTheScriptModuleWithItsOptionalAutoSelect(self, sm):
-		assert callable(sm.getModule('C-130J').autoSelect)
+		assert callable(sm.getModule('FA-18C').autoSelect) # Fork: the C-130J no longer has one (Cold Start with Preflight was removed).
 		assert not hasattr(sm.getModule('A-10C_2'), 'autoSelect')
 
 	def test_returnsNonEmptyList(self, sm):

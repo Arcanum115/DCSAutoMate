@@ -122,7 +122,7 @@ def test_moduleAutoSelectReturningNothingChangesNothing():
 	assert applyModuleAutoSelect(module, context) == {}
 
 
-# C-130J: values from DCSControlPanel snapshots, cold and dark vs. a "preflight complete" spawn.
+# C-130J: values from DCSControlPanel snapshots of a "preflight complete" spawn.
 C130_PREFLIGHTED = {
 	'ENGINE_APU_CTRL.battery': 1,
 	'ENGINE_APU_CTRL.gen_1': 1,
@@ -131,37 +131,17 @@ C130_PREFLIGHTED = {
 	'ENGINE_APU_CTRL.gen_4': 1,
 	'ENGINE_APU_CTRL.ext_elec': 2, # APU
 }
-C130_COLD_AND_DARK = {**{name: 0 for name in C130_PREFLIGHTED}, 'ENGINE_APU_CTRL.ext_elec': 1} # OFF
 
 def c130():
 	return importlib.import_module('DCSAutoMateScripts.C-130J')
 
 
-def test_c130PreflightedSpawnPicksColdStartWithPreflight():
-	context, _ = fakeContext('Cold Start', C130_PREFLIGHTED)
-	assert c130().autoSelect(context) == {'script': 'Cold Start with Preflight'}
-
-
-def test_c130ColdAndDarkKeepsColdStart():
-	context, _ = fakeContext('Cold Start', C130_COLD_AND_DARK)
-	assert c130().autoSelect(context) == {}
-
-
-def test_c130PartlyPoweredKeepsColdStart():
-	"""A player part way through a manual start may have the battery on but not the rest."""
-	context, _ = fakeContext('Cold Start', {**C130_PREFLIGHTED, 'ENGINE_APU_CTRL.gen_3': 0})
-	assert c130().autoSelect(context) == {}
-
-
-def test_c130NoAnswerFromDcsKeepsColdStart():
-	context, _ = fakeContext('Cold Start', {})
-	assert c130().autoSelect(context) == {}
-
-
-def test_c130OnlyChecksWhenColdStartWasPicked():
-	context, batches = fakeContext('Hot Start', C130_PREFLIGHTED)
-	assert c130().autoSelect(context) == {}
+def test_c130PreflightedSpawnKeepsColdStart():
+	"""Fork change: the Cold Start with Preflight profile was removed, so the C-130J has no autoSelect and even a preflight-complete spawn keeps Cold Start."""
+	context, batches = fakeContext('Cold Start', C130_PREFLIGHTED)
+	assert applyModuleAutoSelect(c130(), context) == {}
 	assert batches == []
+	assert 'Cold Start with Preflight' not in [script['name'] for script in c130().getScriptData()['scripts']]
 
 
 # FA-18C: arg 909 PLT_HelmetMountedKit, from DCSControlPanel snapshots of each Mission Editor helmet option.
